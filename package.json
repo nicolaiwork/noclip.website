@@ -19,6 +19,7 @@
     "send": "^1.2.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
+    "vitest": "^3",
     "webm-muxer": "^5.1.4",
     "wireit": "^0.14.12"
   },
@@ -31,6 +32,7 @@
     "tiff": "^6.2.0"
   },
   "scripts": {
+    "test": "vitest run",
     "start": "wireit",
     "start:release": "wireit",
     "build": "wireit",
@@ -57,7 +59,9 @@
         "rsbuild.config.ts",
         "tsconfig.json"
       ],
-      "dependencies": ["build:wasm-release"]
+      "dependencies": [
+        "build:wasm-release"
+      ]
     },
     "start": {
       "command": "rsbuild dev",
