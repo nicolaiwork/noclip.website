@@ -11,7 +11,7 @@ import { GfxRenderHelper } from "../gfx/render/GfxRenderHelper.js";
 import { gfxRenderInstCompareNone, GfxRenderInstExecutionOrder, GfxRenderInstList } from "../gfx/render/GfxRenderInstManager.js";
 import { rust } from "../rustlib.js";
 import { assert } from "../util.js";
-import { installTreadsimOverlay } from "./treadsim.js";
+import { installTreadsim } from "../Treadsim/index.js";
 import * as UI from "../ui.js";
 import * as Viewer from "../viewer.js";
 import { AdtCoord, AdtData, Database, DoodadData, LazyWorldData, ModelData, WmoData, WmoDefinition, WorldData, WowCache } from "./data.js";
@@ -964,7 +964,7 @@ class ContinentSceneDesc implements Viewer.SceneDesc {
         console.timeEnd("loading wdt");
         const scene = new WdtScene(device, wdt, renderHelper, cache.db);
         scene.enableProgressiveLoading = true;
-        installTreadsimOverlay();
+        installTreadsim(scene);
         return scene;
     }
 }
