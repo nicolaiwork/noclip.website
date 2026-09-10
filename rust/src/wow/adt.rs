@@ -171,6 +171,23 @@ impl Adt {
         }
     }
 
+    /// Per map chunk: [index_x, index_y, pos.x, pos.y, pos.z, 145 heights] (150 f32s).
+    /// Heights are relative to pos.z; vertex j sits at pos - coords(j) * UNIT_SIZE,
+    /// see `chunk_index_to_coords`. Used by Treadsim's ground sampler.
+    pub fn take_height_field(&self) -> Vec<f32> {
+        const STRIDE: usize = 5 + 9 * 9 + 8 * 8;
+        let mut out = Vec::with_capacity(self.map_chunks.len() * STRIDE);
+        for mcnk in &self.map_chunks {
+            out.push(mcnk.header._index_x as f32);
+            out.push(mcnk.header._index_y as f32);
+            out.push(mcnk.header.position.x);
+            out.push(mcnk.header.position.y);
+            out.push(mcnk.header.position.z);
+            out.extend_from_slice(&mcnk.heightmap.heightmap);
+        }
+        out
+    }
+
     pub fn append_lod_obj_adt(&mut self, data: &[u8]) -> Result<(), String> {
         let mut chunked_data = ChunkedData::new(data);
         let mut lod_wmos: Option<Vec<LodWmoDefinition>> = None;
