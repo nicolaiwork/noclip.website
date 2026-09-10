@@ -42,6 +42,18 @@ describe("interpolateChunk", () => {
         expect(interpolateChunk(tile, 5, 3, 5)).toBeCloseTo(8, 9);
         expect(interpolateChunk(tile, 5, 2.5, 2.5)).toBeCloseTo(5, 9);
     });
+    it("selects the triangle of the centre fan, not a bilinear blend", () => {
+        const data = new Float32Array(256 * CHUNK_STRIDE);
+        // cell r=2, c=3 of chunk 0: outer vertex (row 2, col 4) and the cell's centre (inner) vertex.
+        data[5 + 38] = 4;  // j = 2*17 + 4
+        data[5 + 46] = 10; // j = 2*17 + 9 + 3
+        // du = -0.3, dv = 0 -> low-u edge triangle: corners h=0 and h=4, centre 10.
+        expect(interpolateChunk(data, 5, 2.2, 3.5)).toBeCloseTo(5.2, 9);
+        // du = 0, dv = -0.3 -> low-v edge triangle: corners h=0 and h=0, centre 10.
+        expect(interpolateChunk(data, 5, 2.5, 3.2)).toBeCloseTo(4.0, 9);
+        // exactly the centre vertex.
+        expect(interpolateChunk(data, 5, 2.5, 3.5)).toBeCloseTo(10, 9);
+    });
 });
 
 describe("AdtHeightField.heightAt", () => {
