@@ -396,6 +396,7 @@ impl Wmo {
             vertex_buffer_offset: group.vertex_buffer_offset,
             index_buffer_offset: group.index_buffer_offset,
             num_vertices: group.num_vertices,
+            num_indices: group.num_indices,
             num_uv_bufs: group.num_uv_bufs,
             num_color_bufs: group.num_color_bufs,
         }
@@ -460,6 +461,7 @@ impl Wmo {
         let mut indices = Vec::new();
         for group in self.groups.values_mut() {
             group.index_buffer_offset = Some(2 * indices.len()); // in bytes
+            group.num_indices = group.indices.len();
             indices.extend(group.indices.drain(..));
         }
         indices
@@ -636,6 +638,7 @@ pub struct WmoGroupDescriptor {
     pub vertex_buffer_offset: Option<usize>,
     pub index_buffer_offset: Option<usize>,
     pub num_vertices: usize,
+    pub num_indices: usize,
     pub num_uv_bufs: usize,
     pub num_color_bufs: usize,
 }
@@ -654,6 +657,7 @@ pub struct WmoGroup {
     doodad_refs: Vec<u16>,
     bsp_tree: BspTree,
     pub num_vertices: usize,
+    pub num_indices: usize,
     pub num_uv_bufs: usize,
     pub num_color_bufs: usize,
     pub batches: Vec<MaterialBatch>,
@@ -734,6 +738,7 @@ impl WmoGroup {
             indices,
             vertices,
             num_vertices,
+            num_indices: 0,
             normals: maybe_normals.ok_or("WMO group didn't have normals")?,
             liquids: maybe_liquids,
             replacement_for_header_color,
