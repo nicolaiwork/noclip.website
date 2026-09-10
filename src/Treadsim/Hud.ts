@@ -26,7 +26,9 @@ export class Hud {
             box-shadow:0 4px 24px rgba(0,0,0,.5);backdrop-filter:blur(6px)`;
         this.button = document.createElement("button");
         this.button.style.cssText = "font:600 18px system-ui;padding:10px 18px;border-radius:10px;border:0;background:#3b82f6;color:#fff;cursor:pointer";
-        this.button.onclick = () => model.toggleRunning();
+        // blur after clicking, or the button keeps focus and a later Enter both bubbles to
+        // bindKeys and re-fires this click — two toggles, i.e. no visible change.
+        this.button.onclick = () => { model.toggleRunning(); this.button.blur(); };
         const wrap = document.createElement("label");
         wrap.style.cssText = "display:flex;flex-direction:column;gap:4px;font-size:13px;opacity:.9";
         wrap.textContent = "Treadmill speed";
@@ -61,7 +63,11 @@ export function bindKeys(model: ManualSpeedModel): () => void {
     const onKey = (e: KeyboardEvent) => {
         if (e.key === "+" || e.key === "=") model.step(0.5);
         else if (e.key === "-") model.step(-0.5);
-        else if (e.key === "Enter") model.toggleRunning();
+        else if (e.key === "Enter") {
+            // a focused button turns Enter into a native click too; let that be the only toggle
+            if ((e.target as HTMLElement | null)?.tagName === "BUTTON") return;
+            model.toggleRunning();
+        }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
