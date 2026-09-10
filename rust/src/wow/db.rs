@@ -8,8 +8,12 @@ use super::common::*;
 use wasm_bindgen::prelude::*;
 
 #[derive(DekuRead, Debug, Clone)]
-#[deku(magic = b"WDC4")]
+#[deku(magic = b"WDC5")]
 pub struct Wdc4Db2Header {
+    // WDC5 (Classic Era 1.15.x+) = WDC4 with a version + 128-byte schema string
+    // inserted after the magic; everything after is unchanged.
+    pub version: u32,
+    pub schema_string: [u8; 128],
     pub record_count: u32,
     pub field_count: u32,
     pub record_size: u32,
@@ -155,15 +159,18 @@ fn read_field_to_u32<R: std::io::Read + std::io::Seek>(reader: &mut Reader<R>, f
     let field_size_bytes = (field_size_bits + 7 + shift) >> 3;
     assert!(field_size_bits <= 32);
 
-    let mut buf = [0x00; 4];
+    // A 32-bit field at a non-zero bit offset spans 5 bytes (Classic Era 1.15.9
+    // LightData does this), so read into a u64 and mask.
+    assert!(field_size_bytes <= 8);
+    let mut buf = [0x00; 8];
     reader.read_bytes(field_size_bytes, &mut buf, Order::Msb0)?;
-    let v = u32::from_le_bytes(buf);
+    let v = u64::from_le_bytes(buf);
 
     let result = if field_size_bits == 32 {
-        v
+        (v >> shift) as u32
     } else {
-        let mask = (1 << field_size_bits) - 1;
-        (v >> shift) & mask
+        let mask = (1u64 << field_size_bits) - 1;
+        ((v >> shift) & mask) as u32
     };
 
     reader.seek(std::io::SeekFrom::Start(old))
@@ -345,6 +352,11 @@ impl<T> DatabaseTable<T> {
     {
         let (_, db2) = Wdc4Db2File::from_bytes((&data, 0))
             .map_err(|e| format!("{:?}", e))?;
+        // Classic Era ships some tables (e.g. ZoneLight) completely empty: zero
+        // records and zero sections. Treat those as an empty table.
+        if db2.section_headers.is_empty() || db2.header.record_count == 0 {
+            return Ok(DatabaseTable { records: Vec::new(), ids: Vec::new(), foreign_keys: None, copies: HashMap::new() });
+        }
         assert!(db2.section_headers.len() == 1);
         let mut records: Vec<T> = Vec::with_capacity(db2.header.record_count as usize);
         let mut ids: Vec<u32> = Vec::with_capacity(db2.header.record_count as usize);
@@ -354,8 +366,15 @@ impl<T> DatabaseTable<T> {
 
         reader.seek(std::io::SeekFrom::Start(records_start as u64))
             .map_err(|err| err.to_string())?;
+        // flags & 0x4 = IDs live in a separate id list after the string table;
+        // otherwise each record carries its ID inline in field `id_index`.
+        let inline_ids = db2.header.flags & 0x4 == 0 && db2.section_headers[0].id_list_size == 0;
         let mut id = db2.header.min_id;
         for _ in 0..db2.header.record_count {
+            if inline_ids {
+                id = db2.read_field::<u32, _>(&mut reader, db2.header.id_index as usize)
+                    .map_err(|e| format!("{:?}", e))?;
+            }
             let value = T::from_reader_with_ctx(&mut reader, db2.clone())
                 .map_err(|e| format!("{:?}", e))?;
             // our abuse of Deku in the database system always puts the cursor back where it started, so advance to the next record manually
@@ -363,7 +382,7 @@ impl<T> DatabaseTable<T> {
                 .map_err(|err| err.to_string())?;
             records.push(value);
             ids.push(id);
-            id += 1;
+            if !inline_ids { id += 1; }
         }
         let strings_start = records_start + (db2.header.record_count * db2.header.record_size) as usize;
 
@@ -457,25 +476,26 @@ struct ZoneLightPointRecord {
 pub struct LightParamsRecord {
     #[deku(reader = "db2.read_field(deku::reader, 0)")]
     _celestial_overrides: Vec3,
-    #[deku(reader = "db2.read_field(deku::reader, 1)")]
-    pub id: u32,
+    // Classic Era 1.15.9: a second 96-bit vector sits at field 1; ID is inline at field 2.
     #[deku(reader = "db2.read_field(deku::reader, 2)")]
-    pub highlight_sky: bool,
+    pub id: u32,
     #[deku(reader = "db2.read_field(deku::reader, 3)")]
+    pub highlight_sky: bool,
+    #[deku(reader = "db2.read_field(deku::reader, 4)")]
     pub skybox_id: u32,
-    #[deku(reader = "db2.read_field(deku::reader, 5)")]
-    pub glow: f32,
     #[deku(reader = "db2.read_field(deku::reader, 6)")]
-    pub water_shallow_alpha: f32,
+    pub glow: f32,
     #[deku(reader = "db2.read_field(deku::reader, 7)")]
-    pub water_deep_alpha: f32,
+    pub water_shallow_alpha: f32,
     #[deku(reader = "db2.read_field(deku::reader, 8)")]
-    pub ocean_shallow_alpha: f32,
+    pub water_deep_alpha: f32,
     #[deku(reader = "db2.read_field(deku::reader, 9)")]
-    pub ocean_deep_alpha: f32,
+    pub ocean_shallow_alpha: f32,
     #[deku(reader = "db2.read_field(deku::reader, 10)")]
-    pub flags: f32,
+    pub ocean_deep_alpha: f32,
     #[deku(reader = "db2.read_field(deku::reader, 11)")]
+    pub flags: f32,
+    #[deku(reader = "db2.read_field(deku::reader, 12)")]
     pub unk: u32,
 }
 

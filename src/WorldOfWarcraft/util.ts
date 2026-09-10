@@ -5,7 +5,9 @@ import {
 import { DataFetcher, NamedArrayBufferSlice } from "../DataFetcher.js";
 import { rust } from "../rustlib.js";
 
-const SHEEP_PATH = `WorldOfWarcraft/sheep0`;
+// treadsim spike: files are served lazily by the polymorph on-demand server
+// (synthetic index.shp + /file/:id straight from Blizzard's CDN).
+const SHEEP_PATH = `http://127.0.0.1:8081`;
 
 /**
  * Sheepfiles are custom packages of native WoW files built by `polymorph`
@@ -64,12 +66,11 @@ export class Sheepfile {
     }
 
     private async loadEntry(entry: WowSheepfileEntry): Promise<Uint8Array> {
-        let data = await this.fetchDataRange(
-            entry.datafile_name,
-            entry.start_bytes,
-            entry.size_bytes,
-        );
+        const fileId = entry.file_id;
         entry.free();
+        const data = await this.dataFetcher.fetchData(`${SHEEP_PATH}/file/${fileId}`, { allow404: true });
+        if (data.byteLength === 0)
+            throw new Error(`no data for fileId ${fileId}`);
         return data.createTypedArray(Uint8Array);
     }
 
