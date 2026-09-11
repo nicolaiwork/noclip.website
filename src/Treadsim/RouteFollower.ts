@@ -5,7 +5,7 @@ export interface FollowerPose { x: number; y: number; yaw: number }
 export interface FollowerEvents { arrived?(stop: RouteStop, index: number): void; finished?(): void }
 export interface FollowerOptions { loop?: boolean; lookAhead?: number; maxYawRate?: number }
 
-export const DEFAULT_LOOK_AHEAD = 3;
+export const DEFAULT_LOOK_AHEAD = 8;
 export const DEFAULT_MAX_YAW_RATE = 45 * Math.PI / 180;
 
 function wrapAngle(a: number): number {

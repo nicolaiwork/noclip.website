@@ -53,6 +53,7 @@ export class RouteEditor {
     private preview: RoutePreview;
     private storage: Pick<Storage, "getItem" | "setItem">;
     private warnings = new Map<number, string>();
+    public jitter: { median: number; p90: number; max: number } = { median: 0, p90: 0, max: 0 };
     private catalog: RouteCatalogResult = { routes: [], errors: [] };
     private mouseDown: { x: number; y: number; t: number; moved: number } | null = null;
 
@@ -120,6 +121,7 @@ export class RouteEditor {
         saveDraft(this.storage, this.draft);
         const pts = this.draft.points;
         const report = reportRoute(pts, pts.flatMap((p, index) => (p.stop !== null ? [{ name: p.stop, index }] : [])));
+        this.jitter = report.jitter;
         this.warnings.clear();
         for (const s of report.spikes) this.warnings.set(s.waypoint, `heading spike ${s.degPerUnit.toFixed(0)}°/u${s.atStop ? " (at stop)" : ""}`);
         for (const g of report.gaps) this.warnings.set(g.to, `gap ${g.gap} u from #${g.from}`);
@@ -377,7 +379,7 @@ export class RouteEditor {
     private renderList(): void {
         const d = this.draft;
         const stops = d.points.filter((p) => p.stop !== null).length;
-        this.summary.textContent = `${d.length} waypoints · ${stops} stops · ${this.warnings.size} warnings · drops go ${d.selected < 0 ? "at the end" : `after #${d.selected}`}`;
+        this.summary.textContent = `${d.length} waypoints · ${stops} stops · ${this.warnings.size} warnings · jitter ${this.jitter.median.toFixed(2)} u · drops go ${d.selected < 0 ? "at the end" : `after #${d.selected}`}`;
         this.list.innerHTML = "";
         d.points.forEach((p, i) => {
             const row = document.createElement("div");

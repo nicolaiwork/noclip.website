@@ -1,5 +1,6 @@
 import { RoutePath } from "./RoutePath.js";
 import type { RouteStop, RouteWaypoint } from "./RouteFile.js";
+import { lateralOffsets } from "./RouteSmoothing.js";
 
 /**
  * Route quality scan (Phase 3 final review, recommendation 2). A sideways waypoint bends the
@@ -13,7 +14,8 @@ export const MIN_GAP = 1;
 
 export interface HeadingSpike { s: number; waypoint: number; degPerUnit: number; atStop: boolean }
 export interface GapIssue { from: number; to: number; gap: number }
-export interface RouteReport { spikes: HeadingSpike[]; gaps: GapIssue[] }
+export interface JitterStats { median: number; p90: number; max: number }
+export interface RouteReport { spikes: HeadingSpike[]; gaps: GapIssue[]; jitter: JitterStats }
 
 function wrapDeg(d: number): number { return ((d + 540) % 360) - 180; }
 
@@ -53,7 +55,19 @@ export function gapIssues(waypoints: RouteWaypoint[], maxGap = MAX_GAP, minGap =
     return out;
 }
 
+function jitterStats(waypoints: RouteWaypoint[]): JitterStats {
+    const offsets = lateralOffsets(waypoints);
+    if (offsets.length === 0) return { median: 0, p90: 0, max: 0 };
+    const sorted = [...offsets].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const p90 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.9))];
+    const max = sorted[sorted.length - 1];
+    return { median, p90, max };
+}
+
 export function reportRoute(waypoints: RouteWaypoint[], stops: RouteStop[]): RouteReport {
-    if (waypoints.length < 2) return { spikes: [], gaps: [] };
-    return { spikes: headingSpikes(new RoutePath(waypoints, stops)), gaps: gapIssues(waypoints) };
+    if (waypoints.length < 2) return { spikes: [], gaps: [], jitter: { median: 0, p90: 0, max: 0 } };
+    // Judged on the smoothed path the follower actually drives; jitter itself is informational
+    // and measured on the raw clicked waypoints.
+    return { spikes: headingSpikes(new RoutePath(waypoints, stops)), gaps: gapIssues(waypoints), jitter: jitterStats(waypoints) };
 }

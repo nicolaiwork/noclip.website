@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mat4 } from "gl-matrix";
-import { TreadsimController } from "./TreadsimController.js";
+import { DEFAULT_EYE_HEIGHT, TreadsimController } from "./TreadsimController.js";
 import { ManualSpeedModel } from "./ManualSpeed.js";
 import { GroundSampler } from "./GroundSampler.js";
 import { RoutePath } from "./RoutePath.js";
@@ -59,7 +59,7 @@ describe("TreadsimController", () => {
         // A space regression (passing noclip coords to the sampler) leaves Y at 200.
         // worldMatrix is a Float32Array (gl-matrix default), so compare against the
         // same float32 rounding the assignment in `tick` goes through.
-        expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(GATE.ground + 1.8), 6);
+        expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(GATE.ground + DEFAULT_EYE_HEIGHT), 6);
     });
 });
 
@@ -83,7 +83,7 @@ describe("TreadsimController route mode", () => {
         // worldMatrix is a Float32Array (gl-matrix default): fround the expected value to
         // match the same rounding the position assignment in `tick` goes through (as the
         // pre-existing Stormwind-gate test above does).
-        const [nx, ny, nz] = noclipFromAdt([-9000 + s, 300, 41.8]);
+        const [nx, ny, nz] = noclipFromAdt([-9000 + s, 300, 40 + DEFAULT_EYE_HEIGHT]);
         expect(m[12]).toBeCloseTo(Math.fround(nx), 5); expect(m[13]).toBeCloseTo(Math.fround(ny), 5); expect(m[14]).toBeCloseTo(Math.fround(nz), 5);
         // heading +x (game north) is noclip forward (0,0,-1): -m[8..10]
         expect(-m[8]).toBeCloseTo(0, 6); expect(-m[10]).toBeCloseTo(-1, 6);
@@ -109,10 +109,10 @@ describe("TreadsimController route mode", () => {
         c.groundSampler = new GroundSampler({ heightAt: () => h }, { floorBelow: () => undefined });
         c.setRoute(new RouteFollower(northLine()));
         c.tick(0.016, { yaw: 0, pitch: 0 });
-        expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(26.8), 6);
+        expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(25 + DEFAULT_EYE_HEIGHT), 6);
         h = undefined;
         c.tick(0.016, { yaw: 0, pitch: 0 });
-        expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(26.8), 6);
+        expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(25 + DEFAULT_EYE_HEIGHT), 6);
     });
 
     it("setRoute(null) returns to free roam and resets the odometer", () => {
@@ -129,7 +129,7 @@ describe("TreadsimController route mode", () => {
         const cam = cameraFacingNegZ();
         c.attachCamera(cam); c.groundSampler = flat(70);
         c.teleportTo(-8913, -137);
-        const [nx, ny, nz] = noclipFromAdt([-8913, -137, 71.8]);
+        const [nx, ny, nz] = noclipFromAdt([-8913, -137, 70 + DEFAULT_EYE_HEIGHT]);
         expect(cam.worldMatrix[12]).toBeCloseTo(Math.fround(nx), 6); expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(ny), 6); expect(cam.worldMatrix[14]).toBeCloseTo(Math.fround(nz), 6);
     });
 

@@ -10,7 +10,8 @@ export interface CameraLike {
     worldMatrixUpdated(): void;
 }
 
-export const DEFAULT_EYE_HEIGHT = 1.8;
+// Raised from 1.8 after the Phase 4 run; a start-screen setting is planned.
+export const DEFAULT_EYE_HEIGHT = 2.2;
 
 /**
  * Moves the camera by the smoothed treadmill speed. Free roam: a step along the camera's

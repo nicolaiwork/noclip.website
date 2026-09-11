@@ -1,5 +1,6 @@
 import { adtTileCoord } from "./coords.js";
 import type { RouteStop, RouteWaypoint } from "./RouteFile.js";
+import { DEFAULT_SMOOTHING, smoothWaypoints, type SmoothingOptions } from "./RouteSmoothing.js";
 
 const ALPHA = 0.5; // centripetal Catmull-Rom
 
@@ -30,8 +31,9 @@ export class RoutePath {
     public readonly stopS: number[];
     public readonly lengthTotal: number;
 
-    constructor(waypoints: RouteWaypoint[], public readonly stops: RouteStop[], spacing = 0.5) {
-        if (waypoints.length < 2) throw new Error("RoutePath: needs at least two waypoints");
+    constructor(rawWaypoints: RouteWaypoint[], public readonly stops: RouteStop[], spacing = 0.5, smoothing: SmoothingOptions | false = DEFAULT_SMOOTHING) {
+        if (rawWaypoints.length < 2) throw new Error("RoutePath: needs at least two waypoints");
+        const waypoints = smoothing === false ? rawWaypoints : smoothWaypoints(rawWaypoints, stops, smoothing);
         const n = waypoints.length;
         const at = (i: number): RouteWaypoint => {
             if (i < 0) return { x: 2 * waypoints[0].x - waypoints[1].x, y: 2 * waypoints[0].y - waypoints[1].y };

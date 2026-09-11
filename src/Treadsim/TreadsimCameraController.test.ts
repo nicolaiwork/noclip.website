@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mat4 } from "gl-matrix";
 import { TreadsimCameraController } from "./TreadsimCameraController.js";
-import { TreadsimController } from "./TreadsimController.js";
+import { DEFAULT_EYE_HEIGHT, TreadsimController } from "./TreadsimController.js";
 import { ManualSpeedModel } from "./ManualSpeed.js";
 import { LookOffset } from "./LookOffset.js";
 import { GroundSampler } from "./GroundSampler.js";
@@ -47,7 +47,7 @@ describe("TreadsimCameraController", () => {
         cc.update(fakeInput(100, 0, true), 16, 1);
         expect(fr.calls).toEqual([]);
         expect(look.yaw).toBeCloseTo(-0.2, 9);
-        expect(cc.camera.worldMatrix[13]).toBeCloseTo(1.8, 6);
+        expect(cc.camera.worldMatrix[13]).toBeCloseTo(DEFAULT_EYE_HEIGHT, 6);
     });
     it("reports Unchanged when standing still with no drag, so noclip does not autosave every frame", () => {
         const ctrl = new TreadsimController(new ManualSpeedModel());
@@ -68,11 +68,11 @@ describe("TreadsimCameraController", () => {
         cc.update(fakeInput(), 16, 1);
         expect(fr.calls).toEqual(["update"]);
         expect(fr.forceUpdate).toBe(true);
-        expect(cc.camera.worldMatrix[13]).toBe(0);      // not pinned to ground + 1.8
+        expect(cc.camera.worldMatrix[13]).toBe(0);      // not pinned to ground + eye height
         expect(ctrl.follower!.s).toBe(0);
         cc.flyMode = false;
         cc.update(fakeInput(), 16, 1);
         expect(fr.calls).toEqual(["update"]);           // route mode again: follower drives
-        expect(cc.camera.worldMatrix[13]).toBeCloseTo(Math.fround(51.8), 5);
+        expect(cc.camera.worldMatrix[13]).toBeCloseTo(Math.fround(50 + DEFAULT_EYE_HEIGHT), 5);
     });
 });

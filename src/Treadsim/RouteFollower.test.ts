@@ -46,10 +46,18 @@ describe("RouteFollower", () => {
         expect(f.s).toBeCloseTo(50, 6);
         expect(arrived).toEqual(["B", "C", "B"]);
     });
+    it("defaults to an 8 u look-ahead: heading already aims past a turn at s = 5", () => {
+        // corner at s = 5; smoothing off since this test is about look-ahead distance, not smoothing
+        const turn = new RoutePath([{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 50 }], [{ name: "a", index: 0 }, { name: "b", index: 2 }], 0.5, false);
+        const yaw = new RouteFollower(turn).update(1 / 60, 0, 1).yaw; // s stays 0 (speed 0): target = tangent at min(L, 0 + 8)
+        // with the old look-ahead of 3 the target would still sit on the first segment (~-8 deg);
+        // at 8 it is already well into the +y segment.
+        expect(yaw).toBeGreaterThan(Math.PI / 4);
+    });
     it("slews yaw at most 45 deg/s toward the look-ahead tangent", () => {
         // right-angle turn at (50,0): heading +x then +y
         const p = new RoutePath([{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: 50 }], [{ name: "a", index: 0 }, { name: "b", index: 2 }]);
-        const f = new RouteFollower(p, { lookAhead: 3 });
+        const f = new RouteFollower(p, { lookAhead: 3 }); // geometry of this fixture (jump to s = 48) assumes lookAhead 3
         const y0 = f.update(1 / 60, 0, 1).yaw; // at s = 0 the heading initialises to ~+x
         f.s = 48; // jump to just before the corner: the look-ahead tangent is around the bend
         const y1 = f.update(1 / 60, 0, 1).yaw;
@@ -69,10 +77,11 @@ describe("RouteFollower", () => {
         const square = new RoutePath(
             [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }, { x: 0, y: 0 }],
             [{ name: "a", index: 0 }, { name: "b", index: 4 }]);
-        const looped = new RouteFollower(square, { loop: true, maxYawRate: 1000 });
+        // geometry of this fixture assumes lookAhead 3 (the comments below are in terms of it)
+        const looped = new RouteFollower(square, { loop: true, maxYawRate: 1000, lookAhead: 3 });
         looped.s = square.lengthTotal - 1;
         const yawLoop = looped.update(0.001, 0, 1).yaw;          // target = tangent at (L - 1 + 3) mod L = 2 → +x
-        const straight = new RouteFollower(square, { loop: false, maxYawRate: 1000 });
+        const straight = new RouteFollower(square, { loop: false, maxYawRate: 1000, lookAhead: 3 });
         straight.s = square.lengthTotal - 1;
         const yawEnd = straight.update(0.001, 0, 1).yaw;          // target = tangent at L → -y
         expect(Math.abs(yawLoop)).toBeLessThan(Math.PI / 4);

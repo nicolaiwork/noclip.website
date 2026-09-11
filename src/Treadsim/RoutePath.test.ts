@@ -33,7 +33,9 @@ describe("RoutePath on a straight line", () => {
 describe("RoutePath on a quarter circle", () => {
     const R = 100;
     const wps = [0, 30, 60, 90].map((deg) => ({ x: R * Math.cos(deg * Math.PI / 180), y: R * Math.sin(deg * Math.PI / 180) }));
-    const path = new RoutePath(wps, [{ name: "S", index: 0 }, { name: "E", index: 3 }]);
+    // only S and E are stops, so default smoothing would pull waypoints 1 and 2 off the circle;
+    // this fixture asserts exact geometry, so smoothing is disabled here.
+    const path = new RoutePath(wps, [{ name: "S", index: 0 }, { name: "E", index: 3 }], 0.5, false);
 
     it("is close to the true arc length and stays near the circle", () => {
         expect(path.lengthTotal).toBeGreaterThan(155);   // chords sum to 155.3
@@ -56,6 +58,27 @@ describe("RoutePath on a quarter circle", () => {
         const [tx, ty] = path.tangentAt(0);
         expect(Math.abs(tx)).toBeLessThan(0.27);
         expect(ty).toBeGreaterThan(0.95);
+    });
+});
+
+describe("RoutePath smooths clicked waypoints by default", () => {
+    // interior points alternate ±1 off the centreline; the declared stops sit on it exactly.
+    const jittered = Array.from({ length: 12 }, (_, i) => ({ x: i * 8, y: i === 0 || i === 11 ? 0 : (i % 2 === 0 ? 1 : -1) }));
+    const ends = [{ name: "A", index: 0 }, { name: "B", index: 11 }];
+
+    it("keeps the sampled path close to the centreline, unlike an unsmoothed one", () => {
+        const smoothed = new RoutePath(jittered, ends);
+        for (let s = 0; s <= smoothed.lengthTotal; s += 1) expect(Math.abs(smoothed.positionAt(s)[1])).toBeLessThan(0.2);
+
+        const raw = new RoutePath(jittered, ends, 0.5, false);
+        let sawLargeY = false;
+        for (let s = 0; s <= raw.lengthTotal; s += 1) if (Math.abs(raw.positionAt(s)[1]) > 0.8) sawLargeY = true;
+        expect(sawLargeY).toBe(true);
+    });
+
+    it("keeps waypointS indexed by the original waypoint count", () => {
+        const smoothed = new RoutePath(jittered, ends);
+        expect(smoothed.waypointS.length).toBe(jittered.length);
     });
 });
 
