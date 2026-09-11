@@ -15,10 +15,10 @@ import { preloadTiles } from "./RoutePreloader.js";
 import { GroundSampler } from "./GroundSampler.js";
 import { TerrainSampler } from "./TerrainSampler.js";
 import { WmoFloorCaster } from "./WmoFloorCaster.js";
-import { WaypointRecorder } from "./WaypointRecorder.js";
-import { adtFromNoclip } from "./coords.js";
+import { RouteEditor } from "./RouteEditor.js";
+import { loadCatalog, saveRoute } from "./RouteCatalog.js";
 
-let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; unbind: () => void; raf: number } | null = null;
+let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; editor: RouteEditor; scene: WdtScene; unbind: () => void; raf: number } | null = null;
 
 /** Called by noclip's WoW scene loader once a continent scene exists. */
 export function installTreadsim(scene: WdtScene): TreadsimController {
@@ -27,11 +27,14 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         current.unbind();
         current.hud.destroy();
         current.picker.destroy();
+        current.editor.destroy();
+        current.scene.onDebugDraw = null;
         current.controller.destroy();
     }
     const model = new ManualSpeedModel();
     const controller = new TreadsimController(model);
-    const cam = (window as any).main.viewer.camera;
+    const viewer = (window as any).main.viewer;
+    const cam = viewer.camera;
     controller.attachCamera(cam);
     const world = scene.world as any; // WorldData | LazyWorldData: both have adts; globalWmoDef exists on LazyWorldData
     controller.groundSampler = new GroundSampler(new TerrainSampler(world), new WmoFloorCaster(world));
@@ -54,11 +57,49 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         if (wasRunning) model.toggleRunning();
     };
     const hud = new Hud(model, controller, { onRoutes: openPicker });
+
+    const look = new LookOffset();
+    const cameraController = new TreadsimCameraController(controller, new FPSCameraController(), look);
+    // main.ts installs this after createScene resolves (viewer.setCameraController) — no noclip edit needed.
+    (scene as SceneGfx).createCameraController = () => cameraController;
+
+    // Editor mode (spec §6): fly freely, drop waypoints, save into routes/. Nothing runs meanwhile.
+    const editor = new RouteEditor({
+        camera: cam,
+        heightAt: (x, y) => controller.groundSampler!.height(x, y, undefined, controller.eyeHeight),
+        adtCount: () => world.adts.length,
+        clipFromWorld: () => cam.clipFromWorldMatrix,
+        toplevel: viewer.inputManager.toplevel,
+        loadCatalog: () => loadCatalog(),
+        saveRoute: (route) => saveRoute(route),
+        preload: async (route, progress) => {
+            const path = new RoutePath(route.waypoints, route.stops);
+            await preloadTiles(path.tileCoords(), world, scene, progress);
+        },
+        onExit: () => closeEditor(),
+    });
+    const openEditor = () => {
+        if (model.running) model.toggleRunning();
+        wasRunning = false;
+        controller.setRoute(null);
+        picker.hide();
+        hud.setVisible(false);
+        cameraController.flyMode = true;
+        editor.open();
+    };
+    const closeEditor = () => {
+        editor.close();
+        cameraController.flyMode = false;
+        hud.setVisible(true);
+        picker.show({ canResume: false });
+    };
+    scene.onDebugDraw = (dd) => { if (editor.active) editor.drawPreview(dd); };
+
     const picker = new RoutePicker({
         settings,
         serverUp: isServerUp,
         onResume: resumePicker,
-        onEdit: () => {}, // Task 6 wires the editor
+        onEdit: () => openEditor(),
         onStart: async ({ route, settings }) => {
             wasRunning = false; // the new route always starts paused
             controller.worldScale = settings.worldScale;
@@ -86,30 +127,23 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         },
     });
     const unbind = bindKeys(model, {
-        onEscape: () => (picker.visible ? (picker.canResume ? resumePicker() : undefined) : openPicker()),
-        isBlocked: () => picker.visible,
+        onEscape: () => {
+            if (editor.active) closeEditor();
+            else if (picker.visible) { if (picker.canResume) resumePicker(); }
+            else openPicker();
+        },
+        isBlocked: () => picker.visible || editor.active,
     });
     picker.show();
-
-    const cameraController = new TreadsimCameraController(controller, new FPSCameraController(), new LookOffset());
-    // main.ts installs this after createScene resolves (viewer.setCameraController) — no noclip edit needed.
-    (scene as SceneGfx).createCameraController = () => cameraController;
-
-    // Console helper for authoring routes; see Task 8.
-    const recorder = new WaypointRecorder(() => {
-        const m = cam.worldMatrix;
-        const [x, y] = adtFromNoclip([m[12], m[13], m[14]]);
-        return [x, y];
-    });
 
     const loop = () => {
         current!.raf = requestAnimationFrame(loop);
         hud.render();
-        recorder.tick();
+        editor.tick();
     };
-    current = { controller, hud, picker, unbind, raf: requestAnimationFrame(loop) };
+    current = { controller, hud, picker, editor, scene, unbind, raf: requestAnimationFrame(loop) };
     (window as any).treadsim = {
-        controller, model, scene, ground: controller.groundSampler, cameraController, picker, recorder,
+        controller, model, scene, ground: controller.groundSampler, cameraController, picker, editor,
         teleport: (x: number, y: number) => controller.teleportTo(x, y),
     };
     return controller;
