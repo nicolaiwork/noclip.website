@@ -15,6 +15,8 @@ import { preloadTiles } from "./RoutePreloader.js";
 import { GroundSampler } from "./GroundSampler.js";
 import { TerrainSampler } from "./TerrainSampler.js";
 import { WmoFloorCaster } from "./WmoFloorCaster.js";
+import { WaypointRecorder } from "./WaypointRecorder.js";
+import { adtFromNoclip } from "./coords.js";
 
 let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; unbind: () => void; raf: number } | null = null;
 
@@ -29,7 +31,8 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     }
     const model = new ManualSpeedModel();
     const controller = new TreadsimController(model);
-    controller.attachCamera((window as any).main.viewer.camera);
+    const cam = (window as any).main.viewer.camera;
+    controller.attachCamera(cam);
     const world = scene.world as any; // WorldData | LazyWorldData: both have adts; globalWmoDef exists on LazyWorldData
     controller.groundSampler = new GroundSampler(new TerrainSampler(world), new WmoFloorCaster(world));
     void model.start();
@@ -62,13 +65,21 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     // main.ts installs this after createScene resolves (viewer.setCameraController) — no noclip edit needed.
     (scene as SceneGfx).createCameraController = () => cameraController;
 
+    // Console helper for authoring routes; see Task 8.
+    const recorder = new WaypointRecorder(() => {
+        const m = cam.worldMatrix;
+        const [x, y] = adtFromNoclip([m[12], m[13], m[14]]);
+        return [x, y];
+    });
+
     const loop = () => {
         current!.raf = requestAnimationFrame(loop);
         hud.render();
+        recorder.tick();
     };
     current = { controller, hud, picker, unbind, raf: requestAnimationFrame(loop) };
     (window as any).treadsim = {
-        controller, model, scene, ground: controller.groundSampler, cameraController, picker,
+        controller, model, scene, ground: controller.groundSampler, cameraController, picker, recorder,
         teleport: (x: number, y: number) => controller.teleportTo(x, y),
     };
     return controller;
