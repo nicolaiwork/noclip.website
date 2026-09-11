@@ -1,8 +1,9 @@
 import { defineConfig, type RequestHandler } from '@rsbuild/core';
 import { pluginTypeCheck } from '@rsbuild/plugin-type-check';
 import { execSync } from 'node:child_process';
-import { readdir } from 'node:fs';
+import { readdir, writeFile } from 'node:fs';
 import type { ServerResponse } from 'node:http';
+import { join } from 'node:path';
 import parseUrl from 'parseurl';
 import send from 'send';
 
@@ -111,12 +112,47 @@ const serveData: RequestHandler = (req, res, next) => {
   stream.pipe(res);
 };
 
-// treadsim: serve the workspace's routes/ directory (../routes) under /routes/, listing included.
+// treadsim: serve the workspace's routes/ directory (../routes) under /routes/, listing included;
+// PUT /routes/<slug>.json writes a route file from the in-browser editor (dev server, 127.0.0.1 only).
+const ROUTE_FILE_RE = /^[a-z0-9][a-z0-9-]*\.json$/;
 const serveRoutes: RequestHandler = (req, res, next) => {
-  const matches =
-    (req.method === 'GET' || req.method === 'HEAD') &&
-    parseUrl(req)?.pathname?.match(/^\/routes(\/.*)?$/);
+  const pathname = parseUrl(req)?.pathname;
+  const matches = pathname?.match(/^\/routes(\/.*)?$/);
   if (!matches) {
+    next();
+    return;
+  }
+  if (req.method === 'PUT') {
+    const name = (matches[1] || '').slice(1);
+    if (!ROUTE_FILE_RE.test(name)) {
+      res.statusCode = 400;
+      res.end('route file name must match ' + ROUTE_FILE_RE);
+      return;
+    }
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk: string) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        JSON.parse(body);
+      } catch (e) {
+        res.statusCode = 400;
+        res.end('body is not JSON');
+        return;
+      }
+      writeFile(join('../routes', name), body, (err) => {
+        if (err) {
+          res.statusCode = 500;
+          res.end(String(err));
+          return;
+        }
+        res.statusCode = 204;
+        res.end();
+      });
+    });
+    return;
+  }
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
     next();
     return;
   }

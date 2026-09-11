@@ -32,3 +32,16 @@ export async function loadCatalog(fetchFn: typeof fetch = fetch): Promise<RouteC
     }
     return { routes, errors };
 }
+
+/** Route ids double as file names under routes/: lowercase slugs only. */
+export const ROUTE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
+export function routeFileName(id: string): string { return `${id}.json`; }
+
+/** Writes the route into the repo's routes/ directory through the dev server (PUT /routes/<id>.json). */
+export async function saveRoute(route: RouteFile, fetchFn: typeof fetch = fetch): Promise<string> {
+    if (!ROUTE_ID_RE.test(route.id)) throw new Error(`route id must match ${ROUTE_ID_RE} (got "${route.id}")`);
+    const file = routeFileName(route.id);
+    const r = await fetchFn(ROUTES_URL + file, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(route, null, 2) + "\n" });
+    if (!r.ok) throw new Error(`save failed: HTTP ${r.status}`);
+    return file;
+}

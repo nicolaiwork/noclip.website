@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadCatalog, parseListing } from "./RouteCatalog.js";
+import { loadCatalog, parseListing, ROUTE_ID_RE, routeFileName, saveRoute } from "./RouteCatalog.js";
 
 describe("parseListing", () => {
     it("keeps only .json entries, sorted", () => {
@@ -26,5 +26,23 @@ describe("loadCatalog", () => {
     });
     it("returns an empty catalog when the listing is unavailable", async () => {
         expect(await loadCatalog((async () => ({ ok: false, status: 404 })) as any)).toEqual({ routes: [], errors: [] });
+    });
+});
+
+describe("saveRoute", () => {
+    const route = { id: "goldshire-loop", name: "Goldshire loop", mapId: 0, wdtFileId: 775971, stops: [], waypoints: [{ x: 0, y: 0 }, { x: 1, y: 0 }] };
+    it("PUTs pretty JSON to /routes/<id>.json and returns the file name", async () => {
+        const calls: { url: string; init: RequestInit }[] = [];
+        const fetchFn = (async (url: string, init: RequestInit) => { calls.push({ url, init }); return { ok: true, status: 204 }; }) as any;
+        expect(await saveRoute(route, fetchFn)).toBe("goldshire-loop.json");
+        expect(calls[0].url).toBe("/routes/goldshire-loop.json");
+        expect(calls[0].init.method).toBe("PUT");
+        expect(calls[0].init.body).toBe(JSON.stringify(route, null, 2) + "\n");
+    });
+    it("rejects ids that are not lowercase slugs and surfaces HTTP failures", async () => {
+        await expect(saveRoute({ ...route, id: "Bad Id" }, (async () => ({ ok: true })) as any)).rejects.toThrow(/route id/);
+        await expect(saveRoute(route, (async () => ({ ok: false, status: 500 })) as any)).rejects.toThrow(/HTTP 500/);
+        expect(ROUTE_ID_RE.test("northshire-to-stormwind")).toBe(true);
+        expect(routeFileName("a")).toBe("a.json");
     });
 });

@@ -47,7 +47,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     const openPicker = () => {
         wasRunning = model.running;
         if (model.running) model.toggleRunning();
-        picker.show();
+        picker.show({ canResume: true }); // a run exists to go back to
     };
     const resumePicker = () => {
         picker.hide();
@@ -55,8 +55,10 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     };
     const hud = new Hud(model, controller, { onRoutes: openPicker });
     const picker = new RoutePicker({
+        settings,
         serverUp: isServerUp,
         onResume: resumePicker,
+        onEdit: () => {}, // Task 6 wires the editor
         onStart: async ({ route, settings }) => {
             wasRunning = false; // the new route always starts paused
             controller.worldScale = settings.worldScale;
@@ -83,7 +85,10 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
             controller.setRoute(follower);
         },
     });
-    const unbind = bindKeys(model, { onEscape: () => (picker.visible ? resumePicker() : openPicker()), isBlocked: () => picker.visible });
+    const unbind = bindKeys(model, {
+        onEscape: () => (picker.visible ? (picker.canResume ? resumePicker() : undefined) : openPicker()),
+        isBlocked: () => picker.visible,
+    });
     picker.show();
 
     const cameraController = new TreadsimCameraController(controller, new FPSCameraController(), new LookOffset());

@@ -1,6 +1,6 @@
 import { loadCatalog, type RouteCatalogEntry, type RouteCatalogError } from "./RouteCatalog.js";
 import type { RouteFile } from "./RouteFile.js";
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from "./Settings.js";
+import { clampWorldScale, DEFAULT_SETTINGS, saveSettings, WORLD_SCALE_RANGE, type Settings } from "./Settings.js";
 import { DATA_SERVER } from "./ServerStatus.js";
 
 export interface PickerChoice { route: RouteFile | null /* null = free roam */; settings: Settings }
@@ -13,11 +13,14 @@ export interface PickerChoice { route: RouteFile | null /* null = free roam */; 
 export class RoutePicker {
     private overlay: HTMLDivElement;
     private statusLine: HTMLDivElement;
+    private statusText: HTMLSpanElement;
+    private retryButton: HTMLButtonElement;
     private routeList: HTMLDivElement;
     private worldScaleInput: HTMLInputElement;
     private loopInput: HTMLInputElement;
     private startButton: HTMLButtonElement;
     private resumeButton: HTMLButtonElement;
+    private editButton: HTMLButtonElement;
     private progress: HTMLProgressElement;
     private progressLabel: HTMLDivElement;
     private errorLine: HTMLDivElement;
@@ -27,9 +30,10 @@ export class RoutePicker {
     private settings: Settings;
     private starting = false;
     private hasChosen = false;
+    private resumable = false;
 
-    constructor(private opts: { onStart(choice: PickerChoice): Promise<void>; onResume(): void; serverUp: () => Promise<boolean> }) {
-        this.settings = loadSettings(localStorage);
+    constructor(private opts: { settings: Settings; onStart(choice: PickerChoice): Promise<void>; onResume(): void; onEdit(): void; serverUp: () => Promise<boolean> }) {
+        this.settings = opts.settings;
 
         this.overlay = document.createElement("div");
         this.overlay.id = "treadsim-route-picker";
@@ -43,7 +47,13 @@ export class RoutePicker {
         title.style.cssText = "font:700 26px system-ui";
 
         this.statusLine = document.createElement("div");
-        this.statusLine.style.cssText = "font-size:14px;opacity:.85";
+        this.statusLine.style.cssText = "display:flex;align-items:center;gap:10px;font-size:14px;opacity:.85";
+        this.statusText = document.createElement("span");
+        this.retryButton = document.createElement("button");
+        this.retryButton.textContent = "Retry";
+        this.retryButton.style.cssText = "font:600 12px system-ui;padding:4px 10px;border-radius:6px;border:0;background:#334155;color:#fff;cursor:pointer";
+        this.retryButton.onclick = () => { void this.refreshStatus(); void this.loadCatalogAndRender(); this.retryButton.blur(); };
+        this.statusLine.append(this.statusText, this.retryButton);
 
         this.routeList = document.createElement("div");
         this.routeList.style.cssText = "display:flex;flex-direction:column;gap:8px";
@@ -53,7 +63,7 @@ export class RoutePicker {
         worldScaleWrap.textContent = "World scale";
         this.worldScaleInput = document.createElement("input");
         this.worldScaleInput.type = "number";
-        this.worldScaleInput.step = "0.0001"; this.worldScaleInput.min = "0.5"; this.worldScaleInput.max = "2";
+        this.worldScaleInput.step = "0.0001"; this.worldScaleInput.min = String(WORLD_SCALE_RANGE.min); this.worldScaleInput.max = String(WORLD_SCALE_RANGE.max);
         this.worldScaleInput.value = String(this.settings.worldScale);
         this.worldScaleInput.style.cssText = "font:16px system-ui;padding:6px 10px;border-radius:8px;border:0;width:120px";
         const worldScaleHelp = document.createElement("div");
@@ -78,9 +88,14 @@ export class RoutePicker {
         this.resumeButton.style.cssText = "font:600 18px system-ui;padding:12px 20px;border-radius:10px;border:0;background:#334155;color:#fff;cursor:pointer;display:none";
         this.resumeButton.onclick = () => this.opts.onResume();
 
+        this.editButton = document.createElement("button");
+        this.editButton.textContent = "Edit routes…";
+        this.editButton.style.cssText = "font:600 18px system-ui;padding:12px 20px;border-radius:10px;border:0;background:#475569;color:#fff;cursor:pointer;margin-left:auto";
+        this.editButton.onclick = () => { this.editButton.blur(); this.opts.onEdit(); };
+
         const buttonRow = document.createElement("div");
         buttonRow.style.cssText = "display:flex;gap:12px";
-        buttonRow.append(this.startButton, this.resumeButton);
+        buttonRow.append(this.startButton, this.resumeButton, this.editButton);
 
         this.progress = document.createElement("progress");
         this.progress.style.cssText = "width:100%;display:none";
@@ -99,14 +114,15 @@ export class RoutePicker {
     }
 
     private async loadCatalogAndRender(): Promise<void> {
+        const preferId = (this.routeList.querySelector("input[type=radio]:checked") as HTMLInputElement | null)?.value || undefined;
         const { routes, errors } = await loadCatalog();
         this.catalog = routes;
         this.catalogErrors = errors;
         this.catalogLoaded = true;
-        this.renderRouteList();
+        this.renderRouteList(preferId);
     }
 
-    private renderRouteList(): void {
+    private renderRouteList(preferId?: string): void {
         this.routeList.innerHTML = "";
         if (this.catalogLoaded && this.catalog.length === 0 && this.catalogErrors.length === 0) {
             const empty = document.createElement("div");
@@ -114,8 +130,9 @@ export class RoutePicker {
             empty.style.cssText = "font-size:14px;opacity:.7";
             this.routeList.appendChild(empty);
         }
-        const matchIndex = this.catalog.findIndex((e) => e.route.id === this.settings.lastRouteId);
-        const selectIndex = this.settings.lastRouteId !== null && matchIndex >= 0 ? matchIndex : (this.catalog.length > 0 ? 0 : -1);
+        const wantId = preferId ?? this.settings.lastRouteId;
+        const matchIndex = this.catalog.findIndex((e) => e.route.id === wantId);
+        const selectIndex = wantId !== null && matchIndex >= 0 ? matchIndex : (this.catalog.length > 0 ? 0 : -1);
         this.catalog.forEach((entry, i) => {
             const label = document.createElement("label");
             label.style.cssText = "display:flex;align-items:center;gap:8px;font-size:15px";
@@ -142,10 +159,10 @@ export class RoutePicker {
     }
 
     private async refreshStatus(): Promise<void> {
-        this.statusLine.textContent = "Data server: checking…";
+        this.statusText.textContent = "Data server: checking…";
         const up = await this.opts.serverUp();
         const host = DATA_SERVER.replace(/^https?:\/\//, "");
-        this.statusLine.textContent = up ? "Data server: running" : `Data server: not reachable at ${host} — run pnpm run server`;
+        this.statusText.textContent = up ? "Data server: running" : `Data server: not reachable at ${host} — run pnpm run server`;
     }
 
     private async start(): Promise<void> {
@@ -156,7 +173,7 @@ export class RoutePicker {
         const selected = this.routeList.querySelector("input[type=radio]:checked") as HTMLInputElement | null;
         const routeId = selected?.value || null;
         const route = routeId ? this.catalog.find((e) => e.route.id === routeId)?.route ?? null : null;
-        const worldScale = Math.max(0.5, Math.min(2, parseFloat(this.worldScaleInput.value) || DEFAULT_SETTINGS.worldScale));
+        const worldScale = clampWorldScale(parseFloat(this.worldScaleInput.value));
         const settings: Settings = { worldScale, loop: this.loopInput.checked, lastRouteId: route ? route.id : null };
         this.settings = settings;
         saveSettings(localStorage, settings);
@@ -174,15 +191,19 @@ export class RoutePicker {
 
     public get visible(): boolean { return this.overlay.style.display !== "none"; }
 
-    public show(): void {
+    public get canResume(): boolean { return this.resumable; }
+
+    public show(opts: { canResume?: boolean } = {}): void {
+        this.resumable = opts.canResume ?? this.hasChosen;
+        this.resumeButton.style.display = this.resumable ? "" : "none";
         this.overlay.style.display = "flex";
         void this.refreshStatus();
+        void this.loadCatalogAndRender();     // a route saved from the editor shows up without a reload
     }
 
     public hide(): void {
         this.overlay.style.display = "none";
         this.hasChosen = true;
-        this.resumeButton.style.display = "";
     }
 
     /** Shows the progress bar while preloading; a total of 0 hides it again. */

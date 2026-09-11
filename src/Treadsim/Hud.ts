@@ -95,6 +95,9 @@ export class Hud {
         this.toastTimer = setTimeout(() => { this.toast!.style.opacity = "0"; }, ms);
     }
 
+    /** The editor hides the HUD (nothing runs in the editor). */
+    public setVisible(visible: boolean): void { this.root.style.display = visible ? "flex" : "none"; }
+
     public destroy(): void {
         this.root.remove();
         if (this.toastTimer !== null) clearTimeout(this.toastTimer);
