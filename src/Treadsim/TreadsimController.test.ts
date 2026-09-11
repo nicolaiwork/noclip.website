@@ -3,6 +3,9 @@ import { mat4 } from "gl-matrix";
 import { TreadsimController } from "./TreadsimController.js";
 import { ManualSpeedModel } from "./ManualSpeed.js";
 import { GroundSampler } from "./GroundSampler.js";
+import { RoutePath } from "./RoutePath.js";
+import { RouteFollower } from "./RouteFollower.js";
+import { noclipFromAdt } from "./coords.js";
 
 function cameraFacingNegZ() {
     const worldMatrix = mat4.create(); // identity: forward is -Z
@@ -57,5 +60,76 @@ describe("TreadsimController", () => {
         // worldMatrix is a Float32Array (gl-matrix default), so compare against the
         // same float32 rounding the assignment in `tick` goes through.
         expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(GATE.ground + 1.8), 6);
+    });
+});
+
+describe("TreadsimController route mode", () => {
+    const flat = (h: number) => new GroundSampler({ heightAt: () => h }, { floorBelow: () => undefined });
+    const northLine = () => new RoutePath([{ x: -9000, y: 300 }, { x: -8900, y: 300 }], [{ name: "a", index: 0 }, { name: "b", index: 1 }]);
+
+    it("places the camera on the path at ground + eye height, facing along it", async () => {
+        const source = new ManualSpeedModel();
+        const c = new TreadsimController(source, { worldScale: 1 });
+        const cam = cameraFacingNegZ();
+        c.attachCamera(cam);
+        c.groundSampler = flat(40);
+        c.setRoute(new RouteFollower(northLine()));
+        await source.start();
+        source.setSpeedKmh(3.6); source.toggleRunning();
+        for (let i = 0; i < 100; i++) c.tick(0.1, { yaw: 0, pitch: 0 }); // ~10 s at 1 m/s
+        const m = cam.worldMatrix;
+        const s = c.follower!.s;
+        expect(s).toBeGreaterThan(8); expect(s).toBeLessThan(10);
+        // worldMatrix is a Float32Array (gl-matrix default): fround the expected value to
+        // match the same rounding the position assignment in `tick` goes through (as the
+        // pre-existing Stormwind-gate test above does).
+        const [nx, ny, nz] = noclipFromAdt([-9000 + s, 300, 41.8]);
+        expect(m[12]).toBeCloseTo(Math.fround(nx), 5); expect(m[13]).toBeCloseTo(Math.fround(ny), 5); expect(m[14]).toBeCloseTo(Math.fround(nz), 5);
+        // heading +x (game north) is noclip forward (0,0,-1): -m[8..10]
+        expect(-m[8]).toBeCloseTo(0, 6); expect(-m[10]).toBeCloseTo(-1, 6);
+        expect(c.distanceM).toBeCloseTo(s, 3);
+    });
+
+    it("applies the look offset on top of the route heading", () => {
+        const c = new TreadsimController(new ManualSpeedModel());
+        const cam = cameraFacingNegZ();
+        c.attachCamera(cam); c.groundSampler = flat(0);
+        c.setRoute(new RouteFollower(northLine()));
+        c.tick(0.016, { yaw: Math.PI / 2, pitch: 0 });
+        const m = cam.worldMatrix;
+        expect(-m[8]).toBeCloseTo(-1, 6); // forward now noclip -x
+        expect(-m[10]).toBeCloseTo(0, 6);
+    });
+
+    it("keeps the last eye height when nothing is loaded underneath", () => {
+        let h: number | undefined = 25;
+        const c = new TreadsimController(new ManualSpeedModel());
+        const cam = cameraFacingNegZ();
+        c.attachCamera(cam);
+        c.groundSampler = new GroundSampler({ heightAt: () => h }, { floorBelow: () => undefined });
+        c.setRoute(new RouteFollower(northLine()));
+        c.tick(0.016, { yaw: 0, pitch: 0 });
+        expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(26.8), 6);
+        h = undefined;
+        c.tick(0.016, { yaw: 0, pitch: 0 });
+        expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(26.8), 6);
+    });
+
+    it("setRoute(null) returns to free roam and resets the odometer", () => {
+        const c = new TreadsimController(new ManualSpeedModel());
+        c.attachCamera(cameraFacingNegZ()); c.groundSampler = flat(0);
+        c.setRoute(new RouteFollower(northLine()));
+        c.setRoute(null);
+        expect(c.follower).toBeNull();
+        expect(c.distanceM).toBe(0); expect(c.elapsedS).toBe(0);
+    });
+
+    it("teleportTo puts the camera at terrain + eye height in free roam", () => {
+        const c = new TreadsimController(new ManualSpeedModel());
+        const cam = cameraFacingNegZ();
+        c.attachCamera(cam); c.groundSampler = flat(70);
+        c.teleportTo(-8913, -137);
+        const [nx, ny, nz] = noclipFromAdt([-8913, -137, 71.8]);
+        expect(cam.worldMatrix[12]).toBeCloseTo(Math.fround(nx), 6); expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(ny), 6); expect(cam.worldMatrix[14]).toBeCloseTo(Math.fround(nz), 6);
     });
 });

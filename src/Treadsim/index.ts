@@ -1,6 +1,10 @@
+import { FPSCameraController } from "../Camera.js";
+import type { SceneGfx } from "../viewer.js";
 import type { WdtScene } from "../WorldOfWarcraft/scenes.js";
 import { ManualSpeedModel } from "./ManualSpeed.js";
 import { TreadsimController } from "./TreadsimController.js";
+import { TreadsimCameraController } from "./TreadsimCameraController.js";
+import { LookOffset } from "./LookOffset.js";
 import { Hud, bindKeys } from "./Hud.js";
 import { showServerStatus } from "./ServerStatus.js";
 import { GroundSampler } from "./GroundSampler.js";
@@ -27,14 +31,18 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     const hud = new Hud(model, controller);
     const unbind = bindKeys(model);
 
-    let last: number | null = null;
-    const loop = (t: number) => {
+    const cameraController = new TreadsimCameraController(controller, new FPSCameraController(), new LookOffset());
+    // main.ts installs this after createScene resolves (viewer.setCameraController) — no noclip edit needed.
+    (scene as SceneGfx).createCameraController = () => cameraController;
+
+    const loop = () => {
         current!.raf = requestAnimationFrame(loop);
-        if (last !== null) controller.tick((t - last) / 1000);
-        last = t;
         hud.render();
     };
     current = { controller, hud, unbind, raf: requestAnimationFrame(loop) };
-    (window as any).treadsim = { controller, model, scene, ground: controller.groundSampler };
+    (window as any).treadsim = {
+        controller, model, scene, ground: controller.groundSampler, cameraController,
+        teleport: (x: number, y: number) => controller.teleportTo(x, y),
+    };
     return controller;
 }
