@@ -1,7 +1,8 @@
 import { vec3 } from "gl-matrix";
 import { SpeedSmoother } from "./SpeedSmoother.js";
-import { SpeedSource } from "./SpeedSource.js";
+import type { SpeedSource } from "./SpeedSource.js";
 import type { GroundSampler } from "./GroundSampler.js";
+import { adtFromNoclip } from "./coords.js";
 
 export interface CameraLike {
     worldMatrix: Float32Array | number[];
@@ -56,8 +57,11 @@ export class TreadsimController {
             }
         }
         if (this.groundSampler) {
-            const y = this.groundSampler.eyeY(m[12], m[13], m[14], this.eyeHeight, dt);
-            if (y !== undefined) m[13] = y;
+            // The only noclip <-> game conversion in the ground path: camera position to ADT,
+            // sample, and write the eye height back (ADT z is noclip y).
+            const [ax, ay, az] = adtFromNoclip([m[12], m[13], m[14]]);
+            const z = this.groundSampler.eyeZ(ax, ay, az, this.eyeHeight, dt);
+            if (z !== undefined) m[13] = z;
         }
         if (moving || this.groundSampler) this.camera.worldMatrixUpdated();
     }

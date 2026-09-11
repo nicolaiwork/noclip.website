@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TerrainSampler } from "./TerrainSampler.js";
 import { CHUNK_STRIDE, UNIT_SIZE } from "./AdtHeightField.js";
-import { noclipFromAdt } from "./coords.js";
 
 function flatTile(basePos: [number, number, number], height: number): Float32Array {
     const data = new Float32Array(256 * CHUNK_STRIDE);
@@ -18,19 +17,18 @@ function flatTile(basePos: [number, number, number], height: number): Float32Arr
 
 describe("TerrainSampler", () => {
     const base: [number, number, number] = [-9000, 400, 0];
-    const tileMinAdt = [base[0] - 128 * UNIT_SIZE, base[1] - 128 * UNIT_SIZE];
-    // worldSpaceAABB is in ADT space, as noclip's AdtData builds it
+    const tileMin = [base[0] - 128 * UNIT_SIZE, base[1] - 128 * UNIT_SIZE];
+    // worldSpaceAABB is ADT space, as noclip's AdtData builds it
     const tile = {
         heightField: flatTile(base, 12),
-        worldSpaceAABB: { min: [tileMinAdt[0], tileMinAdt[1], -100], max: [base[0], base[1], 200] },
+        worldSpaceAABB: { min: [tileMin[0], tileMin[1], -100], max: [base[0], base[1], 200] },
     };
-    const sampler = new TerrainSampler({ adts: [tile, { heightField: null, worldSpaceAABB: tile.worldSpaceAABB }] });
+    const sampler = new TerrainSampler({ adts: [{ heightField: null, worldSpaceAABB: tile.worldSpaceAABB }, tile] });
 
-    it("returns the terrain height in noclip Y for a point inside the tile", () => {
-        const [nx, , nz] = noclipFromAdt([base[0] - 50, base[1] - 60, 0]);
-        expect(sampler.heightAtNoclip(nx, nz)).toBeCloseTo(12, 5);
+    it("returns the terrain height for a game-space point inside the tile", () => {
+        expect(sampler.heightAt(base[0] - 50, base[1] - 60)).toBeCloseTo(12, 5);
     });
-    it("returns undefined outside every tile", () => {
-        expect(sampler.heightAtNoclip(0, 0)).toBeUndefined();
+    it("skips tiles whose height field is not loaded and returns undefined outside every tile", () => {
+        expect(sampler.heightAt(0, 0)).toBeUndefined();
     });
 });

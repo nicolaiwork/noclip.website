@@ -15,7 +15,7 @@ interface GroupBounds { min: vec3; max: vec3 }
 /**
  * Casts straight down from just above the eye through every WMO whose world box
  * contains the point, in each WMO's model space, and returns the highest floor
- * (noclip Y) within `maxDrop`. Group bounding boxes are computed once per WMO
+ * (ADT z) within `maxDrop`. Group bounding boxes are computed once per WMO
  * from the vertex data and cached.
  */
 export class WmoFloorCaster {
@@ -26,19 +26,24 @@ export class WmoFloorCaster {
 
     constructor(private world: WmoWorldLike) {}
 
-    public floorBelow(nx: number, ny: number, nz: number, maxDrop: number): number | undefined {
+    /**
+     * Highest floor (ADT z) within `maxDrop` below the eye at game-space (x, y, z).
+     * Casts straight down (-Z) in each WMO's model space.
+     */
+    public floorBelow(x: number, y: number, z: number, maxDrop: number): number | undefined {
         const startAbove = 0.5;
-        const origin: [number, number, number] = [nx, ny + startAbove, nz];
+        const origin: [number, number, number] = [x, y, z + startAbove];
         const tMax = maxDrop + startAbove;
         let best: number | undefined;
         const consider = (def: WmoDefLike) => {
             const bb = def.worldAABB;
-            if (nx < bb.min[0] || nx > bb.max[0] || nz < bb.min[2] || nz > bb.max[2]) return;
-            if (origin[1] < bb.min[1]) return; // WMO entirely above the eye
+            if (x < bb.min[0] || x > bb.max[0] || y < bb.min[1] || y > bb.max[1]) return;
+            if (origin[2] < bb.min[2]) return;         // WMO entirely above the eye
+            if (bb.max[2] < origin[2] - tMax) return;  // WMO entirely below reach
             const t = this.castDef(def, origin, tMax);
             if (t === undefined) return;
-            const y = origin[1] - t;
-            if (best === undefined || y > best) best = y;
+            const floorZ = origin[2] - t;
+            if (best === undefined || floorZ > best) best = floorZ;
         };
         for (const adt of this.world.adts) for (const def of adt.lodWmoDefs()) consider(def);
         if (this.world.globalWmoDef) consider(this.world.globalWmoDef);
@@ -48,8 +53,8 @@ export class WmoFloorCaster {
     private castDef(def: WmoDefLike, origin: ReadonlyVec3, tMax: number): number | undefined {
         const inv = def.invModelMatrix;
         const o = vec3.transformMat4(this.scratchO, origin, inv);
-        // direction (0,-1,0) through the linear part of inv: minus its second column
-        const d = vec3.set(this.scratchD, -inv[4], -inv[5], -inv[6]);
+        // world direction (0,0,-1) through the linear part of inv: minus its third column
+        const d = vec3.set(this.scratchD, -inv[8], -inv[9], -inv[10]);
         const wmo = def.wmo;
         const f32 = new Float32Array(wmo.vertexBuffer.buffer, wmo.vertexBuffer.byteOffset, Math.floor(wmo.vertexBuffer.byteLength / 4));
         const ib = wmo.indexBuffer;

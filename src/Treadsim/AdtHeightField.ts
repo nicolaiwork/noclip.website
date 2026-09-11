@@ -2,7 +2,7 @@ export const TILE_SIZE = 1600 / 3;
 export const CHUNK_SIZE = TILE_SIZE / 16;
 export const UNIT_SIZE = CHUNK_SIZE / 8;
 export const CHUNK_STRIDE = 5 + 9 * 9 + 8 * 8; // header floats + 145 heights
-const EPS = 1e-4;
+const EPS = 1e-2;
 
 /** Mirror of Rust `Adt::chunk_index_to_coords`: vertex j -> (x, y) in vertex units. */
 export function chunkIndexToCoords(j: number): [number, number] {
