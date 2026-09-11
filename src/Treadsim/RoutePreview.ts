@@ -13,6 +13,7 @@ const MARKER = colorNewFromRGBA(1, 1, 1, 1);
 const LIFT = 0.4;              // draw slightly above the terrain so lines are not z-fought away
 const MAX_SEGMENTS = 20000;
 const UP = vec3.fromValues(0, 0, 1);   // ADT +z
+const LABEL_SIZE = 2.5; // world units — DebugDraw's world text size is in world units, not pixels
 
 /**
  * Draws the editor's route through noclip's DebugDraw, in ADT space — the WoW scene's
@@ -57,7 +58,7 @@ export class RoutePreview {
             dd.drawLocator(pos, pt.stop !== null ? 1.5 : 0.7, color);
             if (pt.stop !== null) {
                 const label = vec3.fromValues(pos[0], pos[1], pos[2] + 2.5);
-                dd.drawWorldText(pt.stop, label, STOP, { flags: DebugDrawFlags.Default, fontSize: 24 });
+                dd.drawWorldText(pt.stop, label, STOP, { flags: DebugDrawFlags.Default, fontSize: LABEL_SIZE });
             }
         }
 
