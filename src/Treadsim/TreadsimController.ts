@@ -13,9 +13,10 @@ export interface CameraLike {
 export const DEFAULT_EYE_HEIGHT = 1.8;
 
 /**
- * Advances the camera each frame by the smoothed treadmill speed along the
- * camera's horizontal forward direction (noclip space: Y up, forward = -Z).
- * Phase 2 sets `groundSampler`, which pins the camera to ground + eye height.
+ * Moves the camera by the smoothed treadmill speed. Free roam: a step along the camera's
+ * horizontal forward, then the ground sampler pins the eye to ground + eyeHeight. Route mode
+ * (`setRoute`): the RouteFollower owns position and heading, the mouse adds a look offset.
+ * This class is the only place that converts between noclip space and game (ADT) space.
  */
 export class TreadsimController {
     public worldScale: number;

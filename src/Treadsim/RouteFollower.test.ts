@@ -65,4 +65,29 @@ describe("RouteFollower", () => {
         f.update(1 / 60, 0, 1);
         expect(Math.abs(Math.abs(f.update(1 / 60, 0, 1).yaw) - Math.PI)).toBeLessThan(1e-6);
     });
+    it("in loop mode the look-ahead wraps past the end so the heading turns toward the first segment", () => {
+        const square = new RoutePath(
+            [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }, { x: 0, y: 0 }],
+            [{ name: "a", index: 0 }, { name: "b", index: 4 }]);
+        const looped = new RouteFollower(square, { loop: true, maxYawRate: 1000 });
+        looped.s = square.lengthTotal - 1;
+        const yawLoop = looped.update(0.001, 0, 1).yaw;          // target = tangent at (L - 1 + 3) mod L = 2 → +x
+        const straight = new RouteFollower(square, { loop: false, maxYawRate: 1000 });
+        straight.s = square.lengthTotal - 1;
+        const yawEnd = straight.update(0.001, 0, 1).yaw;          // target = tangent at L → -y
+        expect(Math.abs(yawLoop)).toBeLessThan(Math.PI / 4);
+        expect(yawEnd).toBeCloseTo(-Math.PI / 2, 1);
+    });
+    it("slews across the ±π seam the short way", () => {
+        // path heading -x (yaw π) then bending slightly to -y: heading target just below -π+ε, current +π-ε
+        const p = new RoutePath([{ x: 0, y: 0 }, { x: -100, y: 0 }, { x: -200, y: -20 }], [{ name: "a", index: 0 }, { name: "b", index: 2 }]);
+        const f = new RouteFollower(p, { maxYawRate: 10 * Math.PI / 180 });
+        f.update(0.001, 0, 1);                                    // heading initialised to ~π (facing -x)
+        f.s = 120;                                                // now the look-ahead target is past -π (facing slightly -y)
+        const before = f.update(0.001, 0, 1).yaw;
+        const after = f.update(0.5, 0, 1).yaw;                    // 5 degrees of slew allowed
+        const delta = ((after - before + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+        expect(Math.abs(delta)).toBeLessThan(6 * Math.PI / 180);  // moved ≤ 5°, not a 350° swing
+        expect(Math.abs(after)).toBeGreaterThan(Math.PI - 0.2);   // and still around the seam
+    });
 });

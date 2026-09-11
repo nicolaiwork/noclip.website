@@ -48,7 +48,9 @@ export class RouteFollower {
     public update(dtSeconds: number, speedMps: number, worldScale: number): FollowerPose {
         if (!this._finished) this.advance(speedMps * worldScale * dtSeconds);
         const [x, y] = this.path.positionAt(this.s);
-        const [tx, ty] = this.path.tangentAt(Math.min(this.path.lengthTotal, this.s + this.lookAhead));
+        const L = this.path.lengthTotal;
+        const ahead = this.loop ? (this.s + this.lookAhead) % L : Math.min(L, this.s + this.lookAhead);
+        const [tx, ty] = this.path.tangentAt(ahead);
         const target = Math.atan2(ty, tx);
         if (this.heading === null) this.heading = target;
         else {

@@ -102,6 +102,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         onEdit: () => openEditor(),
         onStart: async ({ route, settings }) => {
             wasRunning = false; // the new route always starts paused
+            look.reset();
             controller.worldScale = settings.worldScale;
             if (model.running) model.toggleRunning();
             if (!route) { controller.setRoute(null); return; }
