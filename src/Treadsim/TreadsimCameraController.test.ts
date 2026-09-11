@@ -57,4 +57,22 @@ describe("TreadsimCameraController", () => {
         expect(cc.update(fakeInput(), 16, 1)).toBe(1);   // first frame places the camera
         expect(cc.update(fakeInput(), 16, 1)).toBe(0);   // then nothing moves
     });
+    it("in fly mode runs only the free-roam controller: no treadmill tick, no ground pin, even with a route set", () => {
+        const ctrl = new TreadsimController(new ManualSpeedModel());
+        ctrl.groundSampler = new GroundSampler({ heightAt: () => 50 }, { floorBelow: () => undefined });
+        ctrl.setRoute(new RouteFollower(new RoutePath([{ x: 0, y: 0 }, { x: 100, y: 0 }], [{ name: "a", index: 0 }, { name: "b", index: 1 }])));
+        const fr = stubFreeRoam();
+        const cc = new TreadsimCameraController(ctrl, fr, new LookOffset());
+        cc.camera = fakeCamera(); cc.forceUpdate = true;
+        cc.flyMode = true;
+        cc.update(fakeInput(), 16, 1);
+        expect(fr.calls).toEqual(["update"]);
+        expect(fr.forceUpdate).toBe(true);
+        expect(cc.camera.worldMatrix[13]).toBe(0);      // not pinned to ground + 1.8
+        expect(ctrl.follower!.s).toBe(0);
+        cc.flyMode = false;
+        cc.update(fakeInput(), 16, 1);
+        expect(fr.calls).toEqual(["update"]);           // route mode again: follower drives
+        expect(cc.camera.worldMatrix[13]).toBeCloseTo(Math.fround(51.8), 5);
+    });
 });

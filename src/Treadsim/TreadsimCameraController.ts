@@ -9,14 +9,17 @@ const UNCHANGED = 0 as CameraUpdateResult;
 const CHANGED = 1 as CameraUpdateResult;
 
 /**
- * noclip CameraController for Treadsim. Free roam: noclip's FPS controller moves and
- * looks, then the treadmill step and ground follow are applied. Route mode: the
- * follower owns position and heading; the mouse only adds a LookOffset.
- * Runs inside the viewer's update, before render, so there is no frame of lag.
+ * noclip CameraController for Treadsim, with three modes. Free roam: noclip's FPS
+ * controller moves and looks, then the treadmill step and ground follow are applied.
+ * Route mode: the follower owns position and heading; the mouse only adds a LookOffset.
+ * Fly mode: noclip's FPS controller alone, for the route editor — no treadmill step,
+ * no ground pin. Runs inside the viewer's update, before render, so there is no frame of lag.
  */
 export class TreadsimCameraController implements CameraController {
     public camera!: Camera;
     public forceUpdate = false;
+    /** Editor mode: noclip's free-fly controller alone — no treadmill step, no ground pin. */
+    public flyMode = false;
     private lastMatrix = new Float32Array(16);
 
     constructor(private controller: TreadsimController, private freeRoam: CameraController, private look: LookOffset) {}
@@ -28,6 +31,14 @@ export class TreadsimCameraController implements CameraController {
 
     public update(inputManager: InputManager, dtMs: number, sceneTimeScale: number): CameraUpdateResult {
         const dt = dtMs / 1000;
+        if (this.flyMode) {
+            this.freeRoam.camera = this.camera;
+            this.freeRoam.forceUpdate = this.forceUpdate;
+            this.freeRoam.update(inputManager, dtMs, sceneTimeScale);
+            this.forceUpdate = false;
+            this.camera.worldMatrixUpdated();
+            return this.consumeChanged();
+        }
         this.controller.attachCamera(this.camera);
         if (this.controller.follower) {
             this.look.update(inputManager.getMouseDeltaX(), inputManager.getMouseDeltaY(), inputManager.isDragging(), dt);

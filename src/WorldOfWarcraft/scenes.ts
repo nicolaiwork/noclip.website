@@ -8,6 +8,7 @@ import { makeBackbufferDescSimple, standardFullClearRenderPassDescriptor } from 
 import { GfxClipSpaceNearZ, GfxCullMode, GfxDevice, GfxProgram } from "../gfx/platform/GfxPlatform.js";
 import { GfxrAttachmentSlot } from "../gfx/render/GfxRenderGraph.js";
 import { GfxRenderHelper } from "../gfx/render/GfxRenderHelper.js";
+import type { DebugDraw } from "../gfx/helpers/DebugDraw.js"; // treadsim: editor path preview
 import { gfxRenderInstCompareNone, GfxRenderInstExecutionOrder, GfxRenderInstList } from "../gfx/render/GfxRenderInstManager.js";
 import { rust } from "../rustlib.js";
 import { assert } from "../util.js";
@@ -322,6 +323,7 @@ export class WdtScene implements Viewer.SceneGfx {
     private modelFrustum: ConvexHull;
 
     private timeOfDayPanel: UI.TimeOfDayPanel | null = null;
+    public onDebugDraw: ((debugDraw: DebugDraw) => void) | null = null; // treadsim: editor path preview
 
     constructor(private device: GfxDevice, public world: WorldData | LazyWorldData, public renderHelper: GfxRenderHelper, private db: Database) {
         console.time("WdtScene construction");
@@ -666,6 +668,7 @@ export class WdtScene implements Viewer.SceneGfx {
         template.setGfxProgram(this.skyboxProgram);
 
         this.renderHelper.debugDraw.beginFrame(this.mainView.clipFromViewMatrix, this.mainView.viewFromWorldMatrix, this.mainView.backbufferWidth, this.mainView.backbufferHeight);
+        if (this.onDebugDraw !== null) this.onDebugDraw(this.renderHelper.debugDraw); // treadsim:
 
         const lightingData = this.db.getGlobalLightingData(this.world.lightdbMapId, this.mainView.cameraPos, this.mainView.time);
         BaseProgram.layoutUniformBufs(template, this.mainView, lightingData);
