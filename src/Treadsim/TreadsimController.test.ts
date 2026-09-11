@@ -132,4 +132,20 @@ describe("TreadsimController route mode", () => {
         const [nx, ny, nz] = noclipFromAdt([-8913, -137, 71.8]);
         expect(cam.worldMatrix[12]).toBeCloseTo(Math.fround(nx), 6); expect(cam.worldMatrix[13]).toBeCloseTo(Math.fround(ny), 6); expect(cam.worldMatrix[14]).toBeCloseTo(Math.fround(nz), 6);
     });
+
+    it("stops accumulating distance once the route is finished", async () => {
+        const source = new ManualSpeedModel();
+        const c = new TreadsimController(source, { worldScale: 1 });
+        c.attachCamera(cameraFacingNegZ()); c.groundSampler = flat(0);
+        const short = new RoutePath([{ x: 0, y: 0 }, { x: 4, y: 0 }], [{ name: "a", index: 0 }, { name: "b", index: 1 }]);
+        c.setRoute(new RouteFollower(short));
+        await source.start();
+        source.setSpeedKmh(3.6); source.toggleRunning(); // 1 m/s
+        for (let i = 0; i < 100; i++) c.tick(0.1); // ~10 s: finishes the 4-unit route within the first few seconds
+        expect(c.follower!.finished).toBe(true);
+        const atFinish = c.distanceM;
+        expect(atFinish).toBeGreaterThan(3.9); expect(atFinish).toBeLessThan(4.6); // ~4 plus the last partial step
+        for (let i = 0; i < 20; i++) c.tick(0.1);
+        expect(c.distanceM).toBe(atFinish);
+    });
 });
