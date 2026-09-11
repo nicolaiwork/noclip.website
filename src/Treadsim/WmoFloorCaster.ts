@@ -11,6 +11,7 @@ export interface WmoDefLike { invModelMatrix: ReadonlyMat4; worldAABB: { min: Ar
 export interface WmoWorldLike { adts: { lodWmoDefs(): WmoDefLike[] }[]; globalWmoDef: WmoDefLike | null }
 
 interface GroupBounds { min: vec3; max: vec3 }
+interface WmoGeometry { f32: Float32Array; bounds: Map<number, GroupBounds> }
 
 /**
  * Casts straight down from just above the eye through every WMO whose world box
@@ -19,7 +20,7 @@ interface GroupBounds { min: vec3; max: vec3 }
  * from the vertex data and cached.
  */
 export class WmoFloorCaster {
-    private groupBounds = new WeakMap<WmoLike, Map<number, GroupBounds>>();
+    private geometry = new WeakMap<WmoLike, WmoGeometry>();
     private scratchO = vec3.create();
     private scratchD = vec3.create();
     private a = vec3.create(); private b = vec3.create(); private c = vec3.create();
@@ -56,9 +57,8 @@ export class WmoFloorCaster {
         // world direction (0,0,-1) through the linear part of inv: minus its third column
         const d = vec3.set(this.scratchD, -inv[8], -inv[9], -inv[10]);
         const wmo = def.wmo;
-        const f32 = new Float32Array(wmo.vertexBuffer.buffer, wmo.vertexBuffer.byteOffset, Math.floor(wmo.vertexBuffer.byteLength / 4));
+        const { f32, bounds } = this.geometryFor(wmo);
         const ib = wmo.indexBuffer;
-        const bounds = this.boundsFor(wmo, f32);
         let best: number | undefined;
         for (const g of wmo.groupDescriptors) {
             if (g.antiportal || g.vertex_buffer_offset === undefined || g.index_buffer_offset === undefined) continue;
@@ -78,10 +78,11 @@ export class WmoFloorCaster {
         return best;
     }
 
-    private boundsFor(wmo: WmoLike, f32: Float32Array): Map<number, GroupBounds> {
-        let m = this.groupBounds.get(wmo);
-        if (m) return m;
-        m = new Map();
+    private geometryFor(wmo: WmoLike): WmoGeometry {
+        let geom = this.geometry.get(wmo);
+        if (geom) return geom;
+        const f32 = new Float32Array(wmo.vertexBuffer.buffer, wmo.vertexBuffer.byteOffset, Math.floor(wmo.vertexBuffer.byteLength / 4));
+        const bounds = new Map<number, GroupBounds>();
         for (const g of wmo.groupDescriptors) {
             if (g.vertex_buffer_offset === undefined) continue;
             const min = vec3.fromValues(Infinity, Infinity, Infinity), max = vec3.fromValues(-Infinity, -Infinity, -Infinity);
@@ -93,9 +94,10 @@ export class WmoFloorCaster {
                     if (x > max[k]) max[k] = x;
                 }
             }
-            m.set(g.group_id, { min, max });
+            bounds.set(g.group_id, { min, max });
         }
-        this.groupBounds.set(wmo, m);
-        return m;
+        geom = { f32, bounds };
+        this.geometry.set(wmo, geom);
+        return geom;
     }
 }

@@ -37,3 +37,31 @@ describe("GroundSampler.eyeZ", () => {
         expect(s.eyeZ(0, 0, 12, 1.8, 0.016)).toBeCloseTo(11.8, 9);
     });
 });
+
+describe("GroundSampler WMO re-cast gate", () => {
+    function counting(h: number) {
+        let casts = 0;
+        return { wmo: { floorBelow: () => { casts++; return h; } }, get casts() { return casts; } };
+    }
+    it("does not re-cast while the eye stays within 0.25 units horizontally", () => {
+        const c = counting(14);
+        const s = new GroundSampler(terrainAt(10), c.wmo);
+        s.height(0, 0, 16, 1.8);
+        s.height(0.1, 0.1, 16, 1.8);
+        s.height(0.2, 0, 16, 1.8);
+        expect(c.casts).toBe(1);
+        expect(s.height(0.2, 0, 16, 1.8)).toBe(14); // cached result still used
+    });
+    it("re-casts after moving further than 0.25 units, or 1 unit vertically, or after reset()", () => {
+        const c = counting(14);
+        const s = new GroundSampler(terrainAt(10), c.wmo);
+        s.height(0, 0, 16, 1.8);
+        s.height(0.3, 0, 16, 1.8);
+        expect(c.casts).toBe(2);
+        s.height(0.3, 0, 17.5, 1.8);
+        expect(c.casts).toBe(3);
+        s.reset();
+        s.height(0.3, 0, 17.5, 1.8);
+        expect(c.casts).toBe(4);
+    });
+});
