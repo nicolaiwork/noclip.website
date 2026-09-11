@@ -26,6 +26,7 @@ export const FLY_HEIGHT = 12;
 export const LOOK_DOWN_HEIGHT = 40;
 const CLICK_MAX_PX = 4;
 const CLICK_MAX_MS = 400;
+const TOO_CLOSE_STATUS = "Not changed: two waypoints would be closer than 0.05 u — delete one of them first";
 
 const BTN = "font:600 13px system-ui;padding:6px 10px;border-radius:8px;border:0;color:#fff;cursor:pointer;background:#334155";
 const SMALL = "font:12px system-ui;padding:2px 7px;border-radius:6px;border:0;color:#fff;cursor:pointer;background:#334155";
@@ -50,7 +51,7 @@ export class RouteEditor {
     private storage: Pick<Storage, "getItem" | "setItem">;
     private warnings = new Map<number, string>();
     private catalog: RouteCatalogResult = { routes: [], errors: [] };
-    private mouseDown: { x: number; y: number; t: number } | null = null;
+    private mouseDown: { x: number; y: number; t: number; moved: number } | null = null;
 
     private panel!: HTMLDivElement;
     private idInput!: HTMLInputElement;
@@ -77,6 +78,7 @@ export class RouteEditor {
         this.panel.style.display = "flex";
         window.addEventListener("keydown", this.onKey, { capture: true });
         window.addEventListener("mousedown", this.onMouseDown, { capture: true });
+        window.addEventListener("mousemove", this.onMouseMove, { capture: true });
         window.addEventListener("mouseup", this.onMouseUp, { capture: true });
         void this.refreshCatalog();
         if (this.draft.length > 0) this.flyTo(this.draft.selected >= 0 ? this.draft.selected : this.draft.length - 1);
@@ -91,6 +93,7 @@ export class RouteEditor {
         this.panel.style.display = "none";
         window.removeEventListener("keydown", this.onKey, { capture: true });
         window.removeEventListener("mousedown", this.onMouseDown, { capture: true });
+        window.removeEventListener("mousemove", this.onMouseMove, { capture: true });
         window.removeEventListener("mouseup", this.onMouseUp, { capture: true });
     }
 
@@ -98,6 +101,7 @@ export class RouteEditor {
 
     private adoptDraft(d: RouteDraft): void {
         this.draft = d;
+        this.preview = new RoutePreview(this.deps.heightAt);   // RoutePreview caches on draft.version; a fresh draft starts at 0, so drop the old cache
         d.onChange = () => this.onDraftChange();
         this.idInput.value = d.id; this.nameInput.value = d.name;
         this.onDraftChange();
@@ -187,7 +191,7 @@ export class RouteEditor {
             case "Space": e.preventDefault(); e.stopPropagation(); if (!e.repeat) this.dropHere(); break;   // hide from noclip's fly-up
             case "Backspace": case "Delete":
                 e.preventDefault(); e.stopPropagation();
-                if (!this.draft.remove(this.draft.selected)) this.setStatus("Not changed: two waypoints would be closer than 0.05 u — delete one of them first");
+                if (this.draft.selected >= 0 && !this.draft.remove(this.draft.selected)) this.setStatus(TOO_CLOSE_STATUS);
                 break;
             case "KeyZ": e.stopPropagation(); if (!e.repeat && !this.draft.undo()) this.setStatus("Nothing to undo"); break; // noclip's Z toggles its UI
             case "KeyR": e.stopPropagation(); if (!e.repeat) this.toggleRecording(); break;
@@ -197,14 +201,21 @@ export class RouteEditor {
 
     private onMouseDown = (e: MouseEvent): void => {
         if (!this.active || e.button !== 0 || e.target !== this.deps.toplevel) { this.mouseDown = null; return; }
-        this.mouseDown = { x: e.clientX, y: e.clientY, t: performance.now() };
+        this.mouseDown = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 };
+    };
+
+    // Pointer lock (noclip's InputManager requests it on canvas mousedown) freezes clientX/Y for
+    // the duration of the drag, so the click-vs-drag distance has to come from movementX/Y instead.
+    private onMouseMove = (e: MouseEvent): void => {
+        if (!this.mouseDown) return;
+        this.mouseDown.moved += Math.abs(e.movementX) + Math.abs(e.movementY);
     };
 
     private onMouseUp = (e: MouseEvent): void => {
         const d = this.mouseDown; this.mouseDown = null;
         if (!this.active || !d || e.button !== 0 || e.target !== this.deps.toplevel) return;
-        if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > CLICK_MAX_PX || performance.now() - d.t > CLICK_MAX_MS) return; // a drag: noclip's look
-        this.pickAndDrop(e.clientX, e.clientY);
+        if (d.moved > CLICK_MAX_PX || performance.now() - d.t > CLICK_MAX_MS) return; // a drag: noclip's look
+        this.pickAndDrop(d.x, d.y);
     };
 
     private toggleRecording(): void {
@@ -273,12 +284,16 @@ export class RouteEditor {
 
     private setStatus(text: string): void { this.status.textContent = text; }
 
-    private button(label: string, onClick: () => void, css = BTN): HTMLButtonElement {
+    private button(label: string, onClick: (e: MouseEvent) => void, css = BTN): HTMLButtonElement {
         const b = document.createElement("button");
         b.textContent = label; b.style.cssText = css;
         b.onmousedown = (e) => e.preventDefault();   // keep focus on the canvas so noclip's fly keys keep working
-        b.onclick = onClick;
+        b.onclick = (e) => { e.stopPropagation(); onClick(e); };   // don't let it bubble into the row's onclick (select + fly)
         return b;
+    }
+
+    private confirmDiscard(): boolean {
+        return this.draft.length === 0 || window.confirm(`Discard the current draft (${this.draft.length} waypoints)?`);
     }
 
     private buildPanel(): void {
@@ -305,13 +320,13 @@ export class RouteEditor {
 
         const row1 = document.createElement("div"); row1.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
         this.recordButton = this.button("● Record", () => this.toggleRecording());
-        row1.append(this.button("Undo (Z)", () => { if (!this.draft.undo()) this.setStatus("Nothing to undo"); }), this.recordButton, this.button("New", () => this.newRoute()));
+        row1.append(this.button("Undo (Z)", () => { if (!this.draft.undo()) this.setStatus("Nothing to undo"); }), this.recordButton, this.button("New", () => { if (this.confirmDiscard()) this.newRoute(); }));
 
         const row2 = document.createElement("div"); row2.style.cssText = "display:flex;gap:6px;align-items:center";
         this.openSelect = document.createElement("select"); this.openSelect.style.cssText = "flex:1;font:13px system-ui;padding:5px;border-radius:6px;border:0";
         row2.append(this.openSelect, this.button("Open", () => {
             const entry = this.catalog.routes.find((e) => e.route.id === this.openSelect.value);
-            if (entry) void this.openRoute(entry.route);
+            if (entry && this.confirmDiscard()) void this.openRoute(entry.route);
             this.openSelect.blur();
         }));
 
@@ -344,14 +359,17 @@ export class RouteEditor {
             if (warn) { text.title = warn; text.style.color = "#fca5a5"; }
             row.onclick = () => { d.select(i); this.flyTo(i); };
             const stopLabel = p.stop !== null ? "★" : "☆";
+            const up = this.button("↑", () => { if (!d.move(i, i - 1)) this.setStatus(TOO_CLOSE_STATUS); }, SMALL);
+            up.disabled = i === 0;
+            const down = this.button("↓", () => { if (!d.move(i, i + 1)) this.setStatus(TOO_CLOSE_STATUS); }, SMALL);
+            down.disabled = i === d.length - 1;
             row.append(text,
-                this.button("↑", () => { if (!d.move(i, i - 1)) this.setStatus("Not changed: two waypoints would be closer than 0.05 u — delete one of them first"); }, SMALL),
-                this.button("↓", () => { if (!d.move(i, i + 1)) this.setStatus("Not changed: two waypoints would be closer than 0.05 u — delete one of them first"); }, SMALL),
+                up, down,
                 this.button(stopLabel, () => {
                     const name = window.prompt("Stop name (empty removes the stop)", p.stop ?? "");
                     if (name !== null) d.setStop(i, name);
                 }, SMALL),
-                this.button("✕", () => { if (!d.remove(i)) this.setStatus("Not changed: two waypoints would be closer than 0.05 u — delete one of them first"); }, SMALL + ";background:#7f1d1d"),
+                this.button("✕", () => { if (!d.remove(i)) this.setStatus(TOO_CLOSE_STATUS); }, SMALL + ";background:#7f1d1d"),
             );
             this.list.appendChild(row);
         });

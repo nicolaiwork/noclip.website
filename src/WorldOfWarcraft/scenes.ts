@@ -667,9 +667,6 @@ export class WdtScene implements Viewer.SceneGfx {
         template.setMegaStateFlags({ cullMode: GfxCullMode.Back });
         template.setGfxProgram(this.skyboxProgram);
 
-        this.renderHelper.debugDraw.beginFrame(this.mainView.clipFromViewMatrix, this.mainView.viewFromWorldMatrix, this.mainView.backbufferWidth, this.mainView.backbufferHeight);
-        if (this.onDebugDraw !== null) this.onDebugDraw(this.renderHelper.debugDraw); // treadsim:
-
         const lightingData = this.db.getGlobalLightingData(this.world.lightdbMapId, this.mainView.cameraPos, this.mainView.time);
         BaseProgram.layoutUniformBufs(template, this.mainView, lightingData);
         renderInstManager.setCurrentList(this.renderInstListSky);
@@ -854,6 +851,8 @@ export class WdtScene implements Viewer.SceneGfx {
                 this.renderInstListMain.drawOnPassRenderer(this.renderHelper.renderCache, passRenderer);
             });
         });
+        this.renderHelper.debugDraw.beginFrame(this.mainView.clipFromViewMatrix, this.mainView.viewFromWorldMatrix, this.mainView.backbufferWidth, this.mainView.backbufferHeight); // treadsim: moved before pushPasses — endFrame copies the template and uploads the pages, so they must be filled first
+        if (this.onDebugDraw !== null) this.onDebugDraw(this.renderHelper.debugDraw); // treadsim: moved before pushPasses — endFrame copies the template and uploads the pages, so they must be filled first
         this.renderHelper.debugDraw.pushPasses(builder, mainColorTargetID, mainDepthTargetID);
         this.renderHelper.antialiasingSupport.pushPasses(builder, viewerInput, mainColorTargetID);
         builder.resolveRenderTargetToExternalTexture(mainColorTargetID, viewerInput.onscreenTexture);
