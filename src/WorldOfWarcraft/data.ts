@@ -926,15 +926,16 @@ export class WmoData {
         ]);
         await this.loadLiquids(cache);
 
+        // treadsim: take buffers first so group descriptors carry offsets + num_indices
+        this.vertexBuffer = this.wmo.take_vertex_data();
+        this.indexBuffer = this.wmo.take_indices();
+
         for (const fileId of this.wmo.group_file_ids) {
             this.groupDescriptors.push(this.wmo.get_group_descriptor(fileId));
             if (this.groupDescriptors[this.groupDescriptors.length - 1].antiportal) {
                 console.log('antiportal detected!!!', fileId);
             }
         }
-
-        this.vertexBuffer = this.wmo.take_vertex_data();
-        this.indexBuffer = this.wmo.take_indices();
     }
 
     public getBatches(group: WowWmoGroupDescriptor): WmoBatchData[] {

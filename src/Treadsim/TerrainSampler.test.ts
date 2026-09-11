@@ -19,12 +19,10 @@ function flatTile(basePos: [number, number, number], height: number): Float32Arr
 describe("TerrainSampler", () => {
     const base: [number, number, number] = [-9000, 400, 0];
     const tileMinAdt = [base[0] - 128 * UNIT_SIZE, base[1] - 128 * UNIT_SIZE];
-    // worldSpaceAABB in noclip space (x from adtY, z from adtX)
-    const nMin = noclipFromAdt([tileMinAdt[0], tileMinAdt[1], -100]);
-    const nMax = noclipFromAdt([base[0], base[1], 200]);
+    // worldSpaceAABB is in ADT space, as noclip's AdtData builds it
     const tile = {
         heightField: flatTile(base, 12),
-        worldSpaceAABB: { min: [Math.min(nMin[0], nMax[0]), -100, Math.min(nMin[2], nMax[2])], max: [Math.max(nMin[0], nMax[0]), 200, Math.max(nMin[2], nMax[2])] },
+        worldSpaceAABB: { min: [tileMinAdt[0], tileMinAdt[1], -100], max: [base[0], base[1], 200] },
     };
     const sampler = new TerrainSampler({ adts: [tile, { heightField: null, worldSpaceAABB: tile.worldSpaceAABB }] });
 

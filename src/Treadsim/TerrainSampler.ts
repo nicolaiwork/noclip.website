@@ -6,7 +6,11 @@ export interface TerrainTile {
     worldSpaceAABB: { min: ArrayLike<number>; max: ArrayLike<number> };
 }
 
-/** Terrain height under a noclip-space (x, z), read from the loaded tiles' height fields. */
+/**
+ * Terrain height under a noclip-space (x, z), read from the loaded tiles' height
+ * fields. noclip's `AdtData.worldSpaceAABB` is in ADT space (X, Y horizontal,
+ * Z up), so the tile lookup is done in ADT space too.
+ */
 export class TerrainSampler {
     private fields = new WeakMap<TerrainTile, AdtHeightField>();
 
@@ -17,7 +21,7 @@ export class TerrainSampler {
         for (const tile of this.world.adts) {
             if (!tile.heightField) continue;
             const bb = tile.worldSpaceAABB;
-            if (nx < bb.min[0] || nx > bb.max[0] || nz < bb.min[2] || nz > bb.max[2]) continue;
+            if (ax < bb.min[0] || ax > bb.max[0] || ay < bb.min[1] || ay > bb.max[1]) continue;
             let f = this.fields.get(tile);
             if (!f) { f = new AdtHeightField(tile.heightField); this.fields.set(tile, f); }
             const h = f.heightAt(ax, ay);
