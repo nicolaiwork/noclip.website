@@ -67,7 +67,7 @@ export default defineConfig({
   dev: {
     setupMiddlewares: [
       (middlewares, _server) => {
-        middlewares.unshift(serveData);
+        middlewares.unshift(serveData, serveRoutes);
         return middlewares;
       },
     ],
@@ -105,6 +105,33 @@ const serveData: RequestHandler = (req, res, next) => {
         if (filtered.length === 0) return this.error(404);
         res.setHeader('Content-Type', 'text/plain; charset=UTF-8');
         res.end(`${filtered.join('\n')}\n`);
+      });
+    },
+  );
+  stream.pipe(res);
+};
+
+// treadsim: serve the workspace's routes/ directory (../routes) under /routes/, listing included.
+const serveRoutes: RequestHandler = (req, res, next) => {
+  const matches =
+    (req.method === 'GET' || req.method === 'HEAD') &&
+    parseUrl(req)?.pathname?.match(/^\/routes(\/.*)?$/);
+  if (!matches) {
+    next();
+    return;
+  }
+  const stream = send(req, matches[1] || '', { index: false, root: '../routes' });
+  stream.on(
+    'directory',
+    function handleDirectory(
+      this: send.SendStream,
+      res: ServerResponse,
+      path: string,
+    ) {
+      readdir(path, (err, list) => {
+        if (err) return this.error(500, err);
+        res.setHeader('Content-Type', 'text/plain; charset=UTF-8');
+        res.end(`${list.filter((f) => !f.startsWith('.')).join('\n')}\n`);
       });
     },
   );
