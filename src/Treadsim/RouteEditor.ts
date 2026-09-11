@@ -296,6 +296,12 @@ export class RouteEditor {
         return this.draft.length === 0 || window.confirm(`Discard the current draft (${this.draft.length} waypoints)?`);
     }
 
+    private setDisabled(b: HTMLButtonElement, disabled: boolean): void {
+        b.disabled = disabled;
+        b.style.opacity = disabled ? "0.35" : "1";
+        b.style.cursor = disabled ? "default" : "pointer";
+    }
+
     private buildPanel(): void {
         this.panel = document.createElement("div");
         this.panel.id = "treadsim-route-editor";
@@ -360,9 +366,9 @@ export class RouteEditor {
             row.onclick = () => { d.select(i); this.flyTo(i); };
             const stopLabel = p.stop !== null ? "★" : "☆";
             const up = this.button("↑", () => { if (!d.move(i, i - 1)) this.setStatus(TOO_CLOSE_STATUS); }, SMALL);
-            up.disabled = i === 0;
+            this.setDisabled(up, i === 0);
             const down = this.button("↓", () => { if (!d.move(i, i + 1)) this.setStatus(TOO_CLOSE_STATUS); }, SMALL);
-            down.disabled = i === d.length - 1;
+            this.setDisabled(down, i === d.length - 1);
             row.append(text,
                 up, down,
                 this.button(stopLabel, () => {
