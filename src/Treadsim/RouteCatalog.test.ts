@@ -17,10 +17,14 @@ describe("loadCatalog", () => {
     }) as any;
     it("returns parsed routes and skips invalid files", async () => {
         const cat = await loadCatalog(fetchFn);
-        expect(cat.map((c) => c.file)).toEqual(["r1.json"]);
-        expect(cat[0].route.stops.length).toBe(2); // Start/End added by parseRouteFile
+        expect(cat.routes.map((c) => c.file)).toEqual(["r1.json"]);
+        expect(cat.routes[0].route.stops.length).toBe(2); // Start/End added by parseRouteFile
+    });
+    it("reports invalid files as errors", async () => {
+        const cat = await loadCatalog(fetchFn);
+        expect(cat.errors).toEqual([{ file: "bad.json", message: expect.stringMatching(/route: /) }]);
     });
     it("returns an empty catalog when the listing is unavailable", async () => {
-        expect(await loadCatalog((async () => ({ ok: false, status: 404 })) as any)).toEqual([]);
+        expect(await loadCatalog((async () => ({ ok: false, status: 404 })) as any)).toEqual({ routes: [], errors: [] });
     });
 });

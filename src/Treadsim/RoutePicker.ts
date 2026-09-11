@@ -1,4 +1,4 @@
-import { loadCatalog } from "./RouteCatalog.js";
+import { loadCatalog, type RouteCatalogEntry, type RouteCatalogError } from "./RouteCatalog.js";
 import type { RouteFile } from "./RouteFile.js";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from "./Settings.js";
 import { DATA_SERVER } from "./ServerStatus.js";
@@ -17,15 +17,18 @@ export class RoutePicker {
     private worldScaleInput: HTMLInputElement;
     private loopInput: HTMLInputElement;
     private startButton: HTMLButtonElement;
+    private resumeButton: HTMLButtonElement;
     private progress: HTMLProgressElement;
     private progressLabel: HTMLDivElement;
     private errorLine: HTMLDivElement;
-    private catalog: { file: string; route: RouteFile }[] = [];
+    private catalog: RouteCatalogEntry[] = [];
+    private catalogErrors: RouteCatalogError[] = [];
     private catalogLoaded = false;
     private settings: Settings;
     private starting = false;
+    private hasChosen = false;
 
-    constructor(private opts: { onStart(choice: PickerChoice): Promise<void>; serverUp: () => Promise<boolean> }) {
+    constructor(private opts: { onStart(choice: PickerChoice): Promise<void>; onResume(): void; serverUp: () => Promise<boolean> }) {
         this.settings = loadSettings(localStorage);
 
         this.overlay = document.createElement("div");
@@ -70,6 +73,15 @@ export class RoutePicker {
         this.startButton.style.cssText = "font:600 18px system-ui;padding:12px 20px;border-radius:10px;border:0;background:#3b82f6;color:#fff;cursor:pointer";
         this.startButton.onclick = () => void this.start();
 
+        this.resumeButton = document.createElement("button");
+        this.resumeButton.textContent = "Resume";
+        this.resumeButton.style.cssText = "font:600 18px system-ui;padding:12px 20px;border-radius:10px;border:0;background:#334155;color:#fff;cursor:pointer;display:none";
+        this.resumeButton.onclick = () => this.opts.onResume();
+
+        const buttonRow = document.createElement("div");
+        buttonRow.style.cssText = "display:flex;gap:12px";
+        buttonRow.append(this.startButton, this.resumeButton);
+
         this.progress = document.createElement("progress");
         this.progress.style.cssText = "width:100%;display:none";
         this.progressLabel = document.createElement("div");
@@ -78,7 +90,7 @@ export class RoutePicker {
         this.errorLine = document.createElement("div");
         this.errorLine.style.cssText = "font-size:14px;color:#f87171;min-height:18px";
 
-        panel.append(title, this.statusLine, this.routeList, worldScaleWrap, loopWrap, this.startButton, this.progress, this.progressLabel, this.errorLine);
+        panel.append(title, this.statusLine, this.routeList, worldScaleWrap, loopWrap, buttonRow, this.progress, this.progressLabel, this.errorLine);
         this.overlay.appendChild(panel);
         document.body.appendChild(this.overlay);
 
@@ -87,14 +99,16 @@ export class RoutePicker {
     }
 
     private async loadCatalogAndRender(): Promise<void> {
-        this.catalog = await loadCatalog();
+        const { routes, errors } = await loadCatalog();
+        this.catalog = routes;
+        this.catalogErrors = errors;
         this.catalogLoaded = true;
         this.renderRouteList();
     }
 
     private renderRouteList(): void {
         this.routeList.innerHTML = "";
-        if (this.catalogLoaded && this.catalog.length === 0) {
+        if (this.catalogLoaded && this.catalog.length === 0 && this.catalogErrors.length === 0) {
             const empty = document.createElement("div");
             empty.textContent = "No routes found in routes/";
             empty.style.cssText = "font-size:14px;opacity:.7";
@@ -118,6 +132,13 @@ export class RoutePicker {
         freeRoamInput.checked = selectIndex === -1;
         freeRoamLabel.append(freeRoamInput, document.createTextNode("Free roam (steer with the mouse)"));
         this.routeList.appendChild(freeRoamLabel);
+
+        for (const err of this.catalogErrors) {
+            const line = document.createElement("div");
+            line.textContent = `${err.file}: ${err.message}`;
+            line.style.cssText = "font-size:13px;color:#f87171";
+            this.routeList.appendChild(line);
+        }
     }
 
     private async refreshStatus(): Promise<void> {
@@ -151,12 +172,18 @@ export class RoutePicker {
         }
     }
 
+    public get visible(): boolean { return this.overlay.style.display !== "none"; }
+
     public show(): void {
         this.overlay.style.display = "flex";
         void this.refreshStatus();
     }
 
-    public hide(): void { this.overlay.style.display = "none"; }
+    public hide(): void {
+        this.overlay.style.display = "none";
+        this.hasChosen = true;
+        this.resumeButton.style.display = "";
+    }
 
     /** Shows the progress bar while preloading; a total of 0 hides it again. */
     public setProgress(done: number, total: number): void {

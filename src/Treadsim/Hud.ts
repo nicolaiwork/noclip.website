@@ -102,17 +102,23 @@ export class Hud {
     }
 }
 
-/** +/- adjust speed in 0.5 km/h steps, Enter toggles start/pause, Escape opens the route picker. */
-export function bindKeys(model: ManualSpeedModel, handlers: { onEscape(): void }): () => void {
+/**
+ * +/- adjust speed in 0.5 km/h steps, Enter toggles start/pause, Escape toggles the
+ * route picker. While `isBlocked` (the picker is visible) Enter/+/=/- are ignored so
+ * nothing drives the treadmill behind the overlay; Escape still works either way.
+ */
+export function bindKeys(model: ManualSpeedModel, handlers: { onEscape(): void; isBlocked?(): boolean }): () => void {
     const onKey = (e: KeyboardEvent) => {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
+        if (e.key === "Escape") { handlers.onEscape(); return; }
+        if (handlers.isBlocked?.()) return;
         if (e.key === "+" || e.key === "=") model.step(0.5);
         else if (e.key === "-") model.step(-0.5);
         else if (e.key === "Enter") {
             // a focused button turns Enter into a native click too; let that be the only toggle
             if ((e.target as HTMLElement | null)?.tagName === "BUTTON") return;
             model.toggleRunning();
-        } else if (e.key === "Escape") handlers.onEscape();
+        }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

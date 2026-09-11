@@ -40,18 +40,39 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     const settings = loadSettings(localStorage);
     controller.worldScale = settings.worldScale;
     // Escape and the HUD's Routes button behave identically: pause, then show the picker.
-    const openPicker = () => { if (model.running) model.toggleRunning(); picker.show(); };
+    // wasRunning records whether the run should resume when the picker is dismissed
+    // without picking a new route (Resume / Escape toggle); a successful Start always
+    // leaves the new route paused, so it clears wasRunning.
+    let wasRunning = false;
+    const openPicker = () => {
+        wasRunning = model.running;
+        if (model.running) model.toggleRunning();
+        picker.show();
+    };
+    const resumePicker = () => {
+        picker.hide();
+        if (wasRunning) model.toggleRunning();
+    };
     const hud = new Hud(model, controller, { onRoutes: openPicker });
     const picker = new RoutePicker({
         serverUp: isServerUp,
+        onResume: resumePicker,
         onStart: async ({ route, settings }) => {
+            wasRunning = false; // the new route always starts paused
             controller.worldScale = settings.worldScale;
             if (model.running) model.toggleRunning();
             if (!route) { controller.setRoute(null); return; }
             const path = new RoutePath(route.waypoints, route.stops);
             await preloadTiles(path.tileCoords(), world, scene, (d, t) => picker.setProgress(d, t));
-            // warm the ground stack along the path (builds Task 2b's WMO grids before the run, not mid-run)
-            for (let s = 0; s <= path.lengthTotal; s += 25) { const [x, y] = path.positionAt(s); const t = controller.groundSampler!.height(x, y, undefined, controller.eyeHeight); if (t !== undefined) controller.groundSampler!.height(x, y, t + controller.eyeHeight, controller.eyeHeight); }
+            // warm the ground stack along the path (builds Task 2b's WMO grids before the run, not
+            // mid-run); carry the eye height forward like the follower does so WMO floors above the
+            // terrain (e.g. the gate bridge) get their own grids built, not just terrain-level ones.
+            let z: number | undefined = undefined;
+            for (let s = 0; s <= path.lengthTotal; s += 25) {
+                const [x, y] = path.positionAt(s);
+                const g = controller.groundSampler!.height(x, y, z, controller.eyeHeight);
+                if (g !== undefined) z = g + controller.eyeHeight;
+            }
             controller.groundSampler!.reset();
             const follower = new RouteFollower(path, { loop: settings.loop }, {
                 // The last stop's arrival and "finished" fire together; finished's own
@@ -62,7 +83,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
             controller.setRoute(follower);
         },
     });
-    const unbind = bindKeys(model, { onEscape: openPicker });
+    const unbind = bindKeys(model, { onEscape: () => (picker.visible ? resumePicker() : openPicker()), isBlocked: () => picker.visible });
     picker.show();
 
     const cameraController = new TreadsimCameraController(controller, new FPSCameraController(), new LookOffset());
