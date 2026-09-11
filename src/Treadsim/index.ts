@@ -39,7 +39,9 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
 
     const settings = loadSettings(localStorage);
     controller.worldScale = settings.worldScale;
-    const hud = new Hud(model, controller, { onRoutes: () => { if (model.running) model.toggleRunning(); picker.show(); } });
+    // Escape and the HUD's Routes button behave identically: pause, then show the picker.
+    const openPicker = () => { if (model.running) model.toggleRunning(); picker.show(); };
+    const hud = new Hud(model, controller, { onRoutes: openPicker });
     const picker = new RoutePicker({
         serverUp: isServerUp,
         onStart: async ({ route, settings }) => {
@@ -52,13 +54,15 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
             for (let s = 0; s <= path.lengthTotal; s += 25) { const [x, y] = path.positionAt(s); const t = controller.groundSampler!.height(x, y, undefined, controller.eyeHeight); if (t !== undefined) controller.groundSampler!.height(x, y, t + controller.eyeHeight, controller.eyeHeight); }
             controller.groundSampler!.reset();
             const follower = new RouteFollower(path, { loop: settings.loop }, {
-                arrived: (stop) => hud.showToast(stop.name),
-                finished: () => hud.showToast("Route finished"),
+                // The last stop's arrival and "finished" fire together; finished's own
+                // toast covers the last stop, so skip arrived's to avoid a double toast.
+                arrived: (stop, index) => { if (index !== path.stops.length - 1) hud.showToast(stop.name); },
+                finished: () => hud.showToast(`Finished — ${path.stops[path.stops.length - 1].name}`),
             });
             controller.setRoute(follower);
         },
     });
-    const unbind = bindKeys(model, { onEscape: () => picker.show() });
+    const unbind = bindKeys(model, { onEscape: openPicker });
     picker.show();
 
     const cameraController = new TreadsimCameraController(controller, new FPSCameraController(), new LookOffset());

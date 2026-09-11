@@ -17,6 +17,8 @@ export class Hud {
     private slider: HTMLInputElement;
     private button: HTMLButtonElement;
     private routesButton: HTMLButtonElement;
+    private toast: HTMLDivElement | null = null;
+    private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor(private model: ManualSpeedModel, private controller: TreadsimController, opts: { onRoutes(): void }) {
         this.root = document.createElement("div");
@@ -76,19 +78,28 @@ export class Hud {
         return `\n→ ${stop.name}  ${(dist / this.controller.worldScale / 1000).toFixed(2)} km`;
     }
 
-    /** Centred top banner that fades out after `ms`. Used for stop-arrival and route-finished toasts. */
+    /**
+     * Centred top banner that fades out after `ms`. Reuses a single element so two
+     * toasts firing close together (e.g. the last stop's arrival and route-finished)
+     * replace each other's text instead of stacking.
+     */
     public showToast(text: string, ms = 4000): void {
-        const t = document.createElement("div");
-        t.style.cssText = "position:fixed;top:12%;left:50%;transform:translateX(-50%);font:600 34px system-ui;padding:16px 28px;border-radius:14px;background:rgba(10,10,20,.8);color:#fff;z-index:10002;transition:opacity .6s";
-        t.textContent = text;
-        document.body.appendChild(t);
-        setTimeout(() => {
-            t.style.opacity = "0";
-            setTimeout(() => t.remove(), 600);
-        }, ms);
+        if (!this.toast) {
+            this.toast = document.createElement("div");
+            this.toast.style.cssText = "position:fixed;top:12%;left:50%;transform:translateX(-50%);font:600 34px system-ui;padding:16px 28px;border-radius:14px;background:rgba(10,10,20,.8);color:#fff;z-index:10002;transition:opacity .6s";
+            document.body.appendChild(this.toast);
+        }
+        if (this.toastTimer !== null) clearTimeout(this.toastTimer);
+        this.toast.textContent = text;
+        this.toast.style.opacity = "1";
+        this.toastTimer = setTimeout(() => { this.toast!.style.opacity = "0"; }, ms);
     }
 
-    public destroy(): void { this.root.remove(); }
+    public destroy(): void {
+        this.root.remove();
+        if (this.toastTimer !== null) clearTimeout(this.toastTimer);
+        this.toast?.remove();
+    }
 }
 
 /** +/- adjust speed in 0.5 km/h steps, Enter toggles start/pause, Escape opens the route picker. */
