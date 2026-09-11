@@ -18,12 +18,13 @@ import { WmoFloorCaster } from "./WmoFloorCaster.js";
 import { RouteEditor } from "./RouteEditor.js";
 import { loadCatalog, saveRoute } from "./RouteCatalog.js";
 
-let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; editor: RouteEditor; scene: WdtScene; unbind: () => void; raf: number } | null = null;
+let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; editor: RouteEditor; scene: WdtScene; unbind: () => void; raf: number; cancelKickStreaming: () => void } | null = null;
 
 /** Called by noclip's WoW scene loader once a continent scene exists. */
 export function installTreadsim(scene: WdtScene): TreadsimController {
     if (current) {
         cancelAnimationFrame(current.raf);
+        current.cancelKickStreaming();
         current.unbind();
         current.hud.destroy();
         current.picker.destroy();
@@ -68,27 +69,36 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     let savedFreeze: [boolean, number] | null = null;
 
     // treadsim: after a teleport (flyTo/lookDown/openRoute), force a fresh streaming pass around the
-    // camera. WdtScene.currentAdtCoords is private; updateCurrentAdt only starts a pass when it differs
+    // camera. updateCurrentAdt only starts a pass when WdtScene.currentAdtCoords (public) differs
     // from the camera's current ADT, and LazyWorldData.onEnterAdt returns [] while a pass is already in
     // flight — so a far teleport during an in-flight load would otherwise leave the destination area
     // empty. Resetting currentAdtCoords to an impossible tile once the current pass finishes makes the
     // next frame see a "new" tile and kick off loading around the camera. Poll for "not loading" rather
-    // than kicking immediately, and guard with kickStreamingPending so only one kick is ever pending.
+    // than kicking immediately, and guard with kickStreamingPending so only one kick is ever pending;
+    // cancelKickStreaming (called from installTreadsim's teardown) clears any pending poll so a stale
+    // timer cannot write currentAdtCoords on a scene that has been replaced.
     let kickStreamingPending = false;
+    let kickTimer: ReturnType<typeof setTimeout> | null = null;
     const kickStreaming = (): void => {
         if (kickStreamingPending) return;
         kickStreamingPending = true;
         let tries = 0;
         const poll = () => {
+            kickTimer = null;
             if (!world.loading || tries >= 120) {
                 kickStreamingPending = false;
-                (scene as any).currentAdtCoords = [-1, -1];
+                scene.currentAdtCoords = [-1, -1];
                 return;
             }
             tries++;
-            setTimeout(poll, 500);
+            kickTimer = setTimeout(poll, 500);
         };
         poll();
+    };
+    const cancelKickStreaming = (): void => {
+        if (kickTimer !== null) clearTimeout(kickTimer);
+        kickTimer = null;
+        kickStreamingPending = false;
     };
 
     // Editor mode (spec §6): fly freely, drop waypoints, save into routes/. Nothing runs meanwhile.
@@ -177,7 +187,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         hud.render();
         editor.tick();
     };
-    current = { controller, hud, picker, editor, scene, unbind, raf: requestAnimationFrame(loop) };
+    current = { controller, hud, picker, editor, scene, unbind, raf: requestAnimationFrame(loop), cancelKickStreaming };
     (window as any).treadsim = {
         controller, model, scene, ground: controller.groundSampler, cameraController, picker, editor,
         teleport: (x: number, y: number) => controller.teleportTo(x, y),

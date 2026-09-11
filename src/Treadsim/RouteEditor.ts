@@ -53,6 +53,7 @@ export class RouteEditor {
     private preview: RoutePreview;
     private storage: Pick<Storage, "getItem" | "setItem">;
     private warnings = new Map<number, string>();
+    private warningIndices = new Set<number>();
     public jitter: { median: number; p90: number; max: number } = { median: 0, p90: 0, max: 0 };
     private catalog: RouteCatalogResult = { routes: [], errors: [] };
     private mouseDown: { x: number; y: number; t: number; moved: number } | null = null;
@@ -125,6 +126,7 @@ export class RouteEditor {
         this.warnings.clear();
         for (const s of report.spikes) this.warnings.set(s.waypoint, `heading spike ${s.degPerUnit.toFixed(0)}°/u${s.atStop ? " (at stop)" : ""}`);
         for (const g of report.gaps) this.warnings.set(g.to, `gap ${g.gap} u from #${g.from}`);
+        this.warningIndices = new Set(this.warnings.keys());
         this.renderList();
     }
 
@@ -191,7 +193,7 @@ export class RouteEditor {
     public drawPreview(dd: DebugDraw): void {
         const [x, y] = this.cameraAdt();
         const g = this.deps.heightAt(x, y);
-        this.preview.draw(dd, this.draft, this.deps.adtCount(), new Set(this.warnings.keys()), g === undefined ? undefined : [x, y, g]);
+        this.preview.draw(dd, this.draft, this.deps.adtCount(), this.warningIndices, g === undefined ? undefined : [x, y, g]);
     }
 
     // ---- input -----------------------------------------------------------------------------

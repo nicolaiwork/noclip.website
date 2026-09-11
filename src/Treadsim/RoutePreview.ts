@@ -14,6 +14,8 @@ const LIFT = 0.4;              // draw slightly above the terrain so lines are n
 const MAX_SEGMENTS = 20000;
 const UP = vec3.fromValues(0, 0, 1);   // ADT +z
 const LABEL_SIZE = 2.5; // world units — DebugDraw's world text size is in world units, not pixels
+const scratchA = vec3.create();   // segment endpoints: drawLine copies immediately, so reuse is safe
+const scratchB = vec3.create();
 
 /**
  * Draws the editor's route through noclip's DebugDraw, in ADT space — the WoW scene's
@@ -34,6 +36,7 @@ export class RoutePreview {
         }
         const { samples, heights } = this.cache;
         const p = (s: { x: number; y: number }, z: number) => vec3.fromValues(s.x, s.y, z + LIFT);
+        const set = (out: vec3, s: { x: number; y: number }, z: number) => vec3.set(out, s.x, s.y, z + LIFT);
 
         let segments = 0;
         for (let i = 1; i < samples.length && segments < MAX_SEGMENTS; i++) if (samples[i - 1].z !== undefined && samples[i].z !== undefined) segments++;
@@ -43,7 +46,7 @@ export class RoutePreview {
             for (let i = 1; i < samples.length && drawn < segments; i++) {
                 const a = samples[i - 1], b = samples[i];
                 if (a.z === undefined || b.z === undefined) continue;
-                dd.drawLine(p(a, a.z), p(b, b.z), PATH);
+                dd.drawLine(set(scratchA, a, a.z), set(scratchB, b, b.z), PATH);
                 drawn++;
             }
             dd.endBatch();

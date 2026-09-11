@@ -124,6 +124,12 @@ const serveRoutes: RequestHandler = (req, res, next) => {
     return;
   }
   if (req.method === 'PUT') {
+    const addr = req.socket.remoteAddress;
+    if (addr !== '127.0.0.1' && addr !== '::1' && addr !== '::ffff:127.0.0.1') {
+      res.statusCode = 403;
+      res.end('route writes are accepted from localhost only');
+      return;
+    }
     const name = (matches[1] || '').slice(1);
     if (!ROUTE_FILE_RE.test(name)) {
       res.statusCode = 400;

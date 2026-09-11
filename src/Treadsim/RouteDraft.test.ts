@@ -89,12 +89,29 @@ describe("RouteDraft", () => {
         expect(d.selected).toBe(2);
         expect(d.id).toBe("r");
     });
+    it("fromRoute carries mapId and wdtFileId through toRoute unchanged", () => {
+        const d = RouteDraft.fromRoute({ id: "r", name: "R", mapId: 1, wdtFileId: 1234,
+            stops: [], waypoints: [{ x: 0, y: 0 }, { x: 1, y: 0 }] });
+        const r = d.toRoute();
+        expect(r.mapId).toBe(1);
+        expect(r.wdtFileId).toBe(1234);
+    });
+    it("loadDraft(saveDraft(...)) round-trips mapId and wdtFileId", () => {
+        const s = memStorage();
+        const d = RouteDraft.fromRoute({ id: "r", name: "R", mapId: 1, wdtFileId: 1234,
+            stops: [], waypoints: [{ x: 0, y: 0 }, { x: 1, y: 0 }] });
+        saveDraft(s, d);
+        const back = loadDraft(s)!;
+        const r = back.toRoute();
+        expect(r.mapId).toBe(1);
+        expect(r.wdtFileId).toBe(1234);
+    });
     it("round-trips through localStorage and rejects garbage", () => {
         const s = memStorage();
         const d = new RouteDraft(); d.id = "abc"; d.insert(1, 2); d.setStop(0, "S"); d.select(-1);
         saveDraft(s, d);
         const back = loadDraft(s)!;
-        expect(back.toJSON()).toEqual({ id: "abc", name: "New route", points: [{ x: 1, y: 2, stop: "S" }], selected: -1 });
+        expect(back.toJSON()).toEqual({ id: "abc", name: "New route", mapId: 0, wdtFileId: 775971, points: [{ x: 1, y: 2, stop: "S" }], selected: -1 });
         expect(loadDraft(memStorage())).toBeNull();
         const bad = memStorage(); bad.setItem("treadsim.editorDraft", JSON.stringify({ id: 1, points: [{ x: "a" }] }));
         expect(loadDraft(bad)).toBeNull();

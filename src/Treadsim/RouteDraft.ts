@@ -1,9 +1,9 @@
 import type { RouteFile, RouteStop, RouteWaypoint } from "./RouteFile.js";
 
 export interface DraftPoint { x: number; y: number; stop: string | null }
-export interface DraftState { id: string; name: string; points: DraftPoint[]; selected: number }
+export interface DraftState { id: string; name: string; mapId: number; wdtFileId: number; points: DraftPoint[]; selected: number }
 
-/** Every pair of consecutive points is at least this far apart; so toRoute() always yields a file parseRouteFile accepts. */
+/** Every pair of consecutive points created through insert/insertAt/move/update is at least this far apart. */
 export const MIN_POINT_SPACING = 0.05;
 /** Distance between waypoints when recording while flying (same as the Phase 3 recorder). */
 export const RECORD_SPACING = 8;
@@ -14,14 +14,17 @@ const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.
 
 /**
  * The route editor's model: an ordered list of points, each optionally a named stop, a
- * selection that says where the next dropped point goes, and an undo history. Maintains the
- * invariant that every pair of consecutive points is at least MIN_POINT_SPACING apart, ensuring
- * toRoute() always yields a file parseRouteFile accepts. Pure and DOM-free; the panel and the
- * preview re-render whenever `version` changes.
+ * selection that says where the next dropped point goes, and an undo history. Points created
+ * through insert/insertAt/move/update maintain the invariant that every pair of consecutive
+ * points is at least MIN_POINT_SPACING apart; fromRoute/fromJSON accept whatever points they
+ * are given, and Save is what actually enforces validity, by going through parseRouteFile.
+ * Pure and DOM-free; the panel and the preview re-render whenever `version` changes.
  */
 export class RouteDraft {
     public id = "new-route";
     public name = "New route";
+    public mapId = 0;
+    public wdtFileId = 775971;
     public points: DraftPoint[] = [];
     /** New points are inserted after this index; -1 means "append". */
     public selected = -1;
@@ -33,11 +36,12 @@ export class RouteDraft {
     public get length(): number { return this.points.length; }
 
     private snapshot(): DraftState {
-        return { id: this.id, name: this.name, points: this.points.map((p) => ({ ...p })), selected: this.selected };
+        return { id: this.id, name: this.name, mapId: this.mapId, wdtFileId: this.wdtFileId, points: this.points.map((p) => ({ ...p })), selected: this.selected };
     }
 
     private restore(s: DraftState): void {
         this.id = s.id; this.name = s.name;
+        this.mapId = s.mapId; this.wdtFileId = s.wdtFileId;
         this.points = s.points.map((p) => ({ ...p }));
         this.selected = s.selected;
     }
@@ -156,7 +160,7 @@ export class RouteDraft {
         return this.insertAt(this.points.length, x, y) >= 0;
     }
 
-    public toRoute(wdtFileId = 775971, mapId = 0): RouteFile {
+    public toRoute(wdtFileId = this.wdtFileId, mapId = this.mapId): RouteFile {
         const r2 = (v: number) => Math.round(v * 100) / 100;
         const stops: RouteStop[] = [];
         const waypoints: RouteWaypoint[] = this.points.map((p, index) => {
@@ -171,6 +175,7 @@ export class RouteDraft {
     public static fromRoute(route: RouteFile): RouteDraft {
         const d = new RouteDraft();
         d.id = route.id; d.name = route.name;
+        d.mapId = route.mapId; d.wdtFileId = route.wdtFileId;
         d.points = route.waypoints.map((w) => ({ x: w.x, y: w.y, stop: null }));
         for (const s of route.stops) if (d.points[s.index]) d.points[s.index].stop = s.name;
         d.selected = d.points.length - 1;
@@ -189,6 +194,8 @@ export class RouteDraft {
         }
         const d = new RouteDraft();
         d.id = o.id; d.name = o.name; d.points = points;
+        d.mapId = typeof o.mapId === "number" ? o.mapId : 0;
+        d.wdtFileId = typeof o.wdtFileId === "number" ? o.wdtFileId : 775971;
         d.selected = Number.isInteger(o.selected) ? Math.max(-1, Math.min(points.length - 1, o.selected as number)) : points.length - 1;
         return d;
     }
