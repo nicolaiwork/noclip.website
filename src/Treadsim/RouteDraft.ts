@@ -3,7 +3,7 @@ import type { RouteFile, RouteStop, RouteWaypoint } from "./RouteFile.js";
 export interface DraftPoint { x: number; y: number; stop: string | null }
 export interface DraftState { id: string; name: string; points: DraftPoint[]; selected: number }
 
-/** Inserting or moving a point closer than this to a neighbour is rejected (2-decimal rounding can never merge two points). */
+/** Every pair of consecutive points is at least this far apart; so toRoute() always yields a file parseRouteFile accepts. */
 export const MIN_POINT_SPACING = 0.05;
 /** Distance between waypoints when recording while flying (same as the Phase 3 recorder). */
 export const RECORD_SPACING = 8;
@@ -14,8 +14,10 @@ const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.
 
 /**
  * The route editor's model: an ordered list of points, each optionally a named stop, a
- * selection that says where the next dropped point goes, and an undo history. Pure and
- * DOM-free; the panel and the preview re-render whenever `version` changes.
+ * selection that says where the next dropped point goes, and an undo history. Maintains the
+ * invariant that every pair of consecutive points is at least MIN_POINT_SPACING apart, ensuring
+ * toRoute() always yields a file parseRouteFile accepts. Pure and DOM-free; the panel and the
+ * preview re-render whenever `version` changes.
  */
 export class RouteDraft {
     public id = "new-route";
@@ -69,23 +71,51 @@ export class RouteDraft {
         return this.insertAt(this.selected < 0 ? this.points.length : this.selected + 1, x, y);
     }
 
-    public remove(i: number): void {
-        if (i < 0 || i >= this.points.length) return;
+    public remove(i: number): boolean {
+        if (i < 0 || i >= this.points.length) return false;
+        // Check if removing i would make i-1 and i+1 too close to each other
+        if (i > 0 && i < this.points.length - 1) {
+            if (dist(this.points[i - 1], this.points[i + 1]) < MIN_POINT_SPACING) {
+                return false;
+            }
+        }
         this.mutate(() => {
             this.points.splice(i, 1);
             this.selected = this.points.length === 0 ? -1 : Math.max(0, i - 1);
         });
+        return true;
     }
 
-    /** Moves point i to index j (both in [0, length)); the selection follows the moved point. */
-    public move(i: number, j: number): void {
+    /** Moves point i to index j (both in [0, length)); the selection follows the moved point. Returns false if the move would violate MIN_POINT_SPACING. */
+    public move(i: number, j: number): boolean {
         const n = this.points.length;
-        if (i < 0 || i >= n || j < 0 || j >= n || i === j) return;
+        if (i < 0 || i >= n || j < 0 || j >= n || i === j) return false;
+
+        // Check if removing i would make i-1 and i+1 too close
+        if (i > 0 && i < n - 1) {
+            if (dist(this.points[i - 1], this.points[i + 1]) < MIN_POINT_SPACING) {
+                return false;
+            }
+        }
+
+        // Check if the moved point would be too close to its new neighbors
+        // Create a list without point i to see what neighbors it would have
+        const withoutI = this.points.filter((_, idx) => idx !== i);
+        // After removing i, the moved point will be at position j in the new list
+        // Its neighbors would be at j-1 and j (in the list without i)
+        if (j > 0 && dist(this.points[i], withoutI[j - 1]) < MIN_POINT_SPACING) {
+            return false;
+        }
+        if (j < withoutI.length && dist(this.points[i], withoutI[j]) < MIN_POINT_SPACING) {
+            return false;
+        }
+
         this.mutate(() => {
             const [p] = this.points.splice(i, 1);
             this.points.splice(j, 0, p);
             this.selected = j;
         });
+        return true;
     }
 
     public setStop(i: number, name: string | null): void {

@@ -33,14 +33,14 @@ describe("RouteDraft", () => {
         const d = new RouteDraft();
         for (let i = 0; i < 4; i++) d.insert(i * 10, 0);
         d.setStop(3, "End");
-        d.move(3, 1);
+        expect(d.move(3, 1)).toBe(true);
         expect(d.points.map((p) => p.x)).toEqual([0, 30, 10, 20]);
         expect(d.points[1].stop).toBe("End");
         expect(d.selected).toBe(1);
-        d.remove(1);
+        expect(d.remove(1)).toBe(true);
         expect(d.points.map((p) => p.x)).toEqual([0, 10, 20]);
         expect(d.selected).toBe(0);
-        d.remove(0); d.remove(0); d.remove(0);
+        expect(d.remove(0)).toBe(true); expect(d.remove(0)).toBe(true); expect(d.remove(0)).toBe(true);
         expect(d.length).toBe(0);
         expect(d.selected).toBe(-1);
     });
@@ -98,5 +98,48 @@ describe("RouteDraft", () => {
         expect(loadDraft(memStorage())).toBeNull();
         const bad = memStorage(); bad.setItem("treadsim.editorDraft", JSON.stringify({ id: 1, points: [{ x: "a" }] }));
         expect(loadDraft(bad)).toBeNull();
+    });
+    it("move rejects when the moved point would be too close to its new neighbors", () => {
+        const d = new RouteDraft();
+        d.insert(0, 0);          // A = (0, 0)
+        d.insert(1000, 0);       // B = (1000, 0)
+        d.insert(2000, 0);       // C = (2000, 0)
+        d.insert(0.001, 0.001);  // D = (0.001, 0.001) - appended after C
+        const v = d.version;
+        const origPoints = d.points.map((p) => ({ ...p }));
+        expect(d.move(3, 1)).toBe(false);  // Try to move D between A and B
+        expect(d.version).toBe(v);  // Version unchanged
+        expect(d.points).toEqual(origPoints);  // Order unchanged
+        // Verify that toRoute still produces a valid file
+        const route = d.toRoute();
+        expect(parseRouteFile(route).stops.length).toBeGreaterThanOrEqual(2);
+    });
+    it("remove rejects when it would make adjacent points closer than MIN_POINT_SPACING", () => {
+        const d = RouteDraft.fromJSON({
+            id: "test",
+            name: "Test",
+            points: [
+                { x: 0, y: 0, stop: null },
+                { x: 0.02, y: 0, stop: null },
+                { x: 0.03, y: 0, stop: null }
+            ],
+            selected: 2
+        })!;
+        const v = d.version;
+        expect(d.remove(1)).toBe(false);
+        expect(d.length).toBe(3);
+        expect(d.version).toBe(v);
+    });
+    it("move and remove return true for valid operations", () => {
+        const d = new RouteDraft();
+        for (let i = 0; i < 4; i++) d.insert(i * 10, 0);
+        const v1 = d.version;
+        expect(d.move(3, 0)).toBe(true);
+        expect(d.version).toBe(v1 + 1);
+        expect(d.points.map((p) => p.x)).toEqual([30, 0, 10, 20]);
+        const v2 = d.version;
+        expect(d.remove(1)).toBe(true);
+        expect(d.version).toBe(v2 + 1);
+        expect(d.length).toBe(3);
     });
 });
