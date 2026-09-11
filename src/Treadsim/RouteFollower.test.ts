@@ -89,5 +89,6 @@ describe("RouteFollower", () => {
         const delta = ((after - before + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
         expect(Math.abs(delta)).toBeLessThan(6 * Math.PI / 180);  // moved ≤ 5°, not a 350° swing
         expect(Math.abs(after)).toBeGreaterThan(Math.PI - 0.2);   // and still around the seam
+        expect(after).toBeLessThan(0); // crossed the seam onto the negative branch
     });
 });
