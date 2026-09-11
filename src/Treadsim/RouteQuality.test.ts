@@ -25,6 +25,13 @@ describe("headingSpikes", () => {
         const stopped = headingSpikes(new RoutePath(wps, [{ name: "A", index: 0 }, { name: "Corner", index: 10 }, { name: "B", index: 20 }]));
         expect(stopped[0].atStop).toBe(true);
     });
+    it("flushes a spike run that lasts to the end of the path", () => {
+        // threshold 0: every sample on a curve is over threshold, so one run spans the whole arc and closes at EOF
+        const arc = Array.from({ length: 20 }, (_, i) => { const a = i * 8 / 50; return { x: 50 * Math.sin(a), y: 50 - 50 * Math.cos(a) }; });
+        const spikes = headingSpikes(new RoutePath(arc, ends(20)), 0);
+        expect(spikes.length).toBe(1);
+        expect(spikes[0].degPerUnit).toBeGreaterThan(0);
+    });
 });
 
 describe("gapIssues", () => {
