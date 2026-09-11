@@ -1,6 +1,6 @@
 import { loadCatalog, type RouteCatalogEntry, type RouteCatalogError } from "./RouteCatalog.js";
 import type { RouteFile } from "./RouteFile.js";
-import { clampWorldScale, DEFAULT_SETTINGS, saveSettings, WORLD_SCALE_RANGE, type Settings } from "./Settings.js";
+import { clampWorldScale, saveSettings, WORLD_SCALE_RANGE, type Settings } from "./Settings.js";
 import { DATA_SERVER } from "./ServerStatus.js";
 
 export interface PickerChoice { route: RouteFile | null /* null = free roam */; settings: Settings }
@@ -114,8 +114,10 @@ export class RoutePicker {
     }
 
     private async loadCatalogAndRender(): Promise<void> {
-        const preferId = (this.routeList.querySelector("input[type=radio]:checked") as HTMLInputElement | null)?.value || undefined;
         const { routes, errors } = await loadCatalog();
+        // Read the checked radio after the fetch, not before: capturing it up front would
+        // discard a click that lands during the (possibly slow) network round trip.
+        const preferId = (this.routeList.querySelector("input[type=radio]:checked") as HTMLInputElement | null)?.value || undefined;
         this.catalog = routes;
         this.catalogErrors = errors;
         this.catalogLoaded = true;

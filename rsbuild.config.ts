@@ -115,6 +115,7 @@ const serveData: RequestHandler = (req, res, next) => {
 // treadsim: serve the workspace's routes/ directory (../routes) under /routes/, listing included;
 // PUT /routes/<slug>.json writes a route file from the in-browser editor (dev server, 127.0.0.1 only).
 const ROUTE_FILE_RE = /^[a-z0-9][a-z0-9-]*\.json$/;
+const MAX_ROUTE_BYTES = 1 << 20;
 const serveRoutes: RequestHandler = (req, res, next) => {
   const pathname = parseUrl(req)?.pathname;
   const matches = pathname?.match(/^\/routes(\/.*)?$/);
@@ -131,8 +132,22 @@ const serveRoutes: RequestHandler = (req, res, next) => {
     }
     let body = '';
     req.setEncoding('utf8');
-    req.on('data', (chunk: string) => { body += chunk; });
+    req.on('error', () => {
+      if (!res.headersSent) {
+        res.statusCode = 400;
+        res.end('request aborted');
+      }
+    });
+    req.on('data', (chunk: string) => {
+      body += chunk;
+      if (body.length > MAX_ROUTE_BYTES) {
+        res.statusCode = 413;
+        res.end('route file too large');
+        req.destroy();
+      }
+    });
     req.on('end', () => {
+      if (res.headersSent || res.writableEnded) return;
       try {
         JSON.parse(body);
       } catch (e) {
