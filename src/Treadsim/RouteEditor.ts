@@ -381,7 +381,7 @@ export class RouteEditor {
     private renderList(): void {
         const d = this.draft;
         const stops = d.points.filter((p) => p.stop !== null).length;
-        this.summary.textContent = `${d.length} waypoints · ${stops} stops · ${this.warnings.size} warnings · jitter ${this.jitter.median.toFixed(2)} u · drops go ${d.selected < 0 ? "at the end" : `after #${d.selected}`}`;
+        this.summary.textContent = `${d.length} waypoints · ${stops} stops · ${this.warnings.size} warnings · drops go ${d.selected < 0 ? "at the end" : `after #${d.selected}`} · jitter ${this.jitter.median.toFixed(2)} u`;
         this.list.innerHTML = "";
         d.points.forEach((p, i) => {
             const row = document.createElement("div");

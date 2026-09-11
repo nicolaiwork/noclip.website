@@ -3,6 +3,7 @@ import { DebugDrawFlags, type DebugDraw } from "../gfx/helpers/DebugDraw.js";
 import { colorNewFromRGBA } from "../Color.js";
 import type { RouteDraft } from "./RouteDraft.js";
 import { pointHeights, samplePreview, type PreviewSample } from "./RoutePreviewSamples.js";
+import type { RouteStop } from "./RouteFile.js";
 
 const PATH = colorNewFromRGBA(0.3, 0.9, 1.0, 1);
 const POINT = colorNewFromRGBA(1.0, 0.9, 0.2, 1);
@@ -32,7 +33,12 @@ export class RoutePreview {
 
     public draw(dd: DebugDraw, draft: RouteDraft, adtCount: number, warnings: ReadonlySet<number>, marker?: [number, number, number]): void {
         if (!this.cache || this.cache.version !== draft.version || this.cache.adtCount !== adtCount) {
-            this.cache = { version: draft.version, adtCount, samples: samplePreview(draft.points, this.heightAt), heights: pointHeights(draft.points, this.heightAt) };
+            const n = draft.points.length;
+            const stops: RouteStop[] = draft.points
+                .map((pt, index) => ({ pt, index }))
+                .filter(({ pt, index }) => pt.stop !== null || index === 0 || index === n - 1)
+                .map(({ pt, index }) => ({ name: pt.stop ?? (index === 0 ? "start" : "end"), index }));
+            this.cache = { version: draft.version, adtCount, samples: samplePreview(draft.points, this.heightAt, undefined, stops), heights: pointHeights(draft.points, this.heightAt) };
         }
         const { samples, heights } = this.cache;
         const p = (s: { x: number; y: number }, z: number) => vec3.fromValues(s.x, s.y, z + LIFT);
