@@ -84,16 +84,16 @@ export class WmoFloorCaster {
             if (gb && !rayAabb(o, d, gb.min, gb.max, tMax)) continue;
             const vOff = g.vertex_buffer_offset / 4;
             const iOff = g.index_buffer_offset / 2;
-            const nTri = Math.floor(g.num_indices / 3);
             if (this.useGrid && gb) {
                 const grid = this.gridFor(def, g, f32, ib, gb, d);
                 const ou = o[grid.u] - grid.du * o[grid.a], ov = o[grid.v] - grid.dv * o[grid.a];
-                const cu = Math.floor((ou - grid.minU) / grid.cell), cv = Math.floor((ov - grid.minV) / grid.cell);
-                if (cu < 0 || cu >= grid.nu || cv < 0 || cv >= grid.nv) continue;
+                const cu = Math.min(grid.nu - 1, Math.max(0, Math.floor((ou - grid.minU) / grid.cell)));
+                const cv = Math.min(grid.nv - 1, Math.max(0, Math.floor((ov - grid.minV) / grid.cell)));
                 const list = grid.tris[cu * grid.nv + cv];
                 if (!list) continue;
                 for (const t of list) best = this.testTri(f32, ib, vOff, iOff, t, o, d, tMax, best);
             } else {
+                const nTri = Math.floor(g.num_indices / 3);
                 for (let t = 0; t < nTri; t++) best = this.testTri(f32, ib, vOff, iOff, t, o, d, tMax, best);
             }
         }
