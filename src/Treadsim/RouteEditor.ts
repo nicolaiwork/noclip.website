@@ -19,6 +19,9 @@ export interface RouteEditorDeps {
     saveRoute(route: RouteFile): Promise<string>;
     preload(route: RouteFile, progress: (done: number, total: number) => void): Promise<void>;
     onExit(): void;
+    setHideDoodads(v: boolean): void;
+    setDaylight(v: boolean): void;
+    afterTeleport(): void;
     storage?: Pick<Storage, "getItem" | "setItem">;
 }
 
@@ -61,6 +64,8 @@ export class RouteEditor {
     private recordButton!: HTMLButtonElement;
     private openSelect!: HTMLSelectElement;
     private summary!: HTMLDivElement;
+    private hideTreesCheckbox!: HTMLInputElement;
+    private daylightCheckbox!: HTMLInputElement;
 
     constructor(private deps: RouteEditorDeps) {
         this.storage = deps.storage ?? localStorage;
@@ -81,6 +86,8 @@ export class RouteEditor {
         window.addEventListener("mousemove", this.onMouseMove, { capture: true });
         window.addEventListener("mouseup", this.onMouseUp, { capture: true });
         void this.refreshCatalog();
+        this.hideTreesCheckbox.checked = true; this.deps.setHideDoodads(true);
+        this.daylightCheckbox.checked = true; this.deps.setDaylight(true);
         if (this.draft.length > 0) this.flyTo(this.draft.selected >= 0 ? this.draft.selected : this.draft.length - 1);
         this.setStatus("Space: drop waypoint here · click the road: drop there · Backspace: delete · Z: undo · R: record · Esc: exit");
     }
@@ -95,6 +102,8 @@ export class RouteEditor {
         window.removeEventListener("mousedown", this.onMouseDown, { capture: true });
         window.removeEventListener("mousemove", this.onMouseMove, { capture: true });
         window.removeEventListener("mouseup", this.onMouseUp, { capture: true });
+        this.hideTreesCheckbox.checked = false; this.deps.setHideDoodads(false);
+        this.daylightCheckbox.checked = false; this.deps.setDaylight(false);
     }
 
     public destroy(): void { this.close(); this.panel.remove(); }
@@ -136,6 +145,7 @@ export class RouteEditor {
         if (!p) return;
         const g = this.deps.heightAt(p.x, p.y);
         this.setCameraPosition(p.x, p.y, (g ?? this.cameraAdt()[2] - FLY_HEIGHT) + FLY_HEIGHT);
+        this.deps.afterTeleport();
     }
 
     /** Top-down view with north up (authoring helper; also handy for a quick look at a stretch). */
@@ -145,6 +155,7 @@ export class RouteEditor {
         mat4.set(m, 1, 0, 0, 0,  0, 0, -1, 0,  0, 1, 0, 0,  0, 0, 0, 1);
         const g = this.deps.heightAt(x, y);
         this.setCameraPosition(x, y, (g ?? this.cameraAdt()[2]) + height);
+        this.deps.afterTeleport();
     }
 
     // ---- dropping --------------------------------------------------------------------------
@@ -324,6 +335,20 @@ export class RouteEditor {
         this.list = document.createElement("div");
         this.list.style.cssText = "flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;font-variant-numeric:tabular-nums;font-size:12px";
 
+        const check = (label: string, onChange: (v: boolean) => void): [HTMLInputElement, HTMLLabelElement] => {
+            const input = document.createElement("input"); input.type = "checkbox";
+            input.onchange = () => { onChange(input.checked); input.blur(); };   // keep focus on the canvas so noclip's fly keys keep working
+            const wrap = document.createElement("label"); wrap.style.cssText = "display:flex;align-items:center;gap:5px;font:13px system-ui";
+            wrap.append(input, label);
+            return [input, wrap];
+        };
+        const [hideTreesInput, hideTreesLabel] = check("Hide trees", (v) => this.deps.setHideDoodads(v));
+        this.hideTreesCheckbox = hideTreesInput;
+        const [daylightInput, daylightLabel] = check("Daylight", (v) => this.deps.setDaylight(v));
+        this.daylightCheckbox = daylightInput;
+        const row0 = document.createElement("div"); row0.style.cssText = "display:flex;gap:14px;flex-wrap:wrap";
+        row0.append(hideTreesLabel, daylightLabel);
+
         const row1 = document.createElement("div"); row1.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
         this.recordButton = this.button("● Record", () => this.toggleRecording());
         row1.append(this.button("Undo (Z)", () => { if (!this.draft.undo()) this.setStatus("Nothing to undo"); }), this.recordButton, this.button("New", () => { if (this.confirmDiscard()) this.newRoute(); }));
@@ -345,7 +370,7 @@ export class RouteEditor {
 
         this.status = document.createElement("div"); this.status.style.cssText = "font-size:12px;opacity:.85;min-height:32px";
 
-        this.panel.append(title, field("id (file name)", this.idInput), field("name", this.nameInput), this.summary, this.list, row1, row2, row3, this.status);
+        this.panel.append(title, field("id (file name)", this.idInput), field("name", this.nameInput), this.summary, this.list, row0, row1, row2, row3, this.status);
         document.body.appendChild(this.panel);
     }
 

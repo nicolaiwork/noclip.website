@@ -324,6 +324,7 @@ export class WdtScene implements Viewer.SceneGfx {
 
     private timeOfDayPanel: UI.TimeOfDayPanel | null = null;
     public onDebugDraw: ((debugDraw: DebugDraw) => void) | null = null; // treadsim: editor path preview
+    public hideDoodads = false; // treadsim: editor "Hide trees"
 
     constructor(private device: GfxDevice, public world: WorldData | LazyWorldData, public renderHelper: GfxRenderHelper, private db: Database) {
         console.time("WdtScene construction");
@@ -728,6 +729,7 @@ export class WdtScene implements Viewer.SceneGfx {
         }
         renderInstManager.setCurrentList(this.renderInstListMain);
 
+        if (!this.hideDoodads) // treadsim: editor "Hide trees"
         for (let [modelId, renderer] of this.modelRenderers.entries()) {
             const doodads = frame.doodads
                 .get(modelId)!

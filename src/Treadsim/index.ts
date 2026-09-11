@@ -63,6 +63,34 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     // main.ts installs this after createScene resolves (viewer.setCameraController) — no noclip edit needed.
     (scene as SceneGfx).createCameraController = () => cameraController;
 
+    // treadsim: "Daylight" freezes the clock at noon while the editor is open, restoring whatever
+    // freeze state (on/off + time) preceded it on close.
+    let savedFreeze: [boolean, number] | null = null;
+
+    // treadsim: after a teleport (flyTo/lookDown/openRoute), force a fresh streaming pass around the
+    // camera. WdtScene.currentAdtCoords is private; updateCurrentAdt only starts a pass when it differs
+    // from the camera's current ADT, and LazyWorldData.onEnterAdt returns [] while a pass is already in
+    // flight — so a far teleport during an in-flight load would otherwise leave the destination area
+    // empty. Resetting currentAdtCoords to an impossible tile once the current pass finishes makes the
+    // next frame see a "new" tile and kick off loading around the camera. Poll for "not loading" rather
+    // than kicking immediately, and guard with kickStreamingPending so only one kick is ever pending.
+    let kickStreamingPending = false;
+    const kickStreaming = (): void => {
+        if (kickStreamingPending) return;
+        kickStreamingPending = true;
+        let tries = 0;
+        const poll = () => {
+            if (!world.loading || tries >= 120) {
+                kickStreamingPending = false;
+                (scene as any).currentAdtCoords = [-1, -1];
+                return;
+            }
+            tries++;
+            setTimeout(poll, 500);
+        };
+        poll();
+    };
+
     // Editor mode (spec §6): fly freely, drop waypoints, save into routes/. Nothing runs meanwhile.
     const editor = new RouteEditor({
         camera: cam,
@@ -77,6 +105,13 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
             await preloadTiles(path.tileCoords(), world, scene, progress);
         },
         onExit: () => closeEditor(),
+        setHideDoodads: (v) => { scene.hideDoodads = v; },
+        setDaylight: (v) => {
+            const mv = scene.mainView;
+            if (v) { savedFreeze = [mv.freezeTime, mv.frozenTime]; mv.freezeTime = true; mv.frozenTime = 1440; }
+            else if (savedFreeze) { [mv.freezeTime, mv.frozenTime] = savedFreeze; savedFreeze = null; }
+        },
+        afterTeleport: () => kickStreaming(),
     });
     const openEditor = () => {
         if (model.running) model.toggleRunning();
