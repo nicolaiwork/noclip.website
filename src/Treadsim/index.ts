@@ -6,12 +6,17 @@ import { TreadsimController } from "./TreadsimController.js";
 import { TreadsimCameraController } from "./TreadsimCameraController.js";
 import { LookOffset } from "./LookOffset.js";
 import { Hud, bindKeys } from "./Hud.js";
-import { showServerStatus } from "./ServerStatus.js";
+import { RoutePicker } from "./RoutePicker.js";
+import { isServerUp } from "./ServerStatus.js";
+import { loadSettings } from "./Settings.js";
+import { RoutePath } from "./RoutePath.js";
+import { RouteFollower } from "./RouteFollower.js";
+import { preloadTiles } from "./RoutePreloader.js";
 import { GroundSampler } from "./GroundSampler.js";
 import { TerrainSampler } from "./TerrainSampler.js";
 import { WmoFloorCaster } from "./WmoFloorCaster.js";
 
-let current: { controller: TreadsimController; hud: Hud; unbind: () => void; raf: number } | null = null;
+let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; unbind: () => void; raf: number } | null = null;
 
 /** Called by noclip's WoW scene loader once a continent scene exists. */
 export function installTreadsim(scene: WdtScene): TreadsimController {
@@ -19,17 +24,39 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         cancelAnimationFrame(current.raf);
         current.unbind();
         current.hud.destroy();
+        current.picker.destroy();
         current.controller.destroy();
     }
-    void showServerStatus();
     const model = new ManualSpeedModel();
     const controller = new TreadsimController(model);
     controller.attachCamera((window as any).main.viewer.camera);
     const world = scene.world as any; // WorldData | LazyWorldData: both have adts; globalWmoDef exists on LazyWorldData
     controller.groundSampler = new GroundSampler(new TerrainSampler(world), new WmoFloorCaster(world));
     void model.start();
-    const hud = new Hud(model, controller);
-    const unbind = bindKeys(model);
+
+    const settings = loadSettings(localStorage);
+    controller.worldScale = settings.worldScale;
+    const hud = new Hud(model, controller, { onRoutes: () => { if (model.running) model.toggleRunning(); picker.show(); } });
+    const picker = new RoutePicker({
+        serverUp: isServerUp,
+        onStart: async ({ route, settings }) => {
+            controller.worldScale = settings.worldScale;
+            if (model.running) model.toggleRunning();
+            if (!route) { controller.setRoute(null); return; }
+            const path = new RoutePath(route.waypoints, route.stops);
+            await preloadTiles(path.tileCoords(), world, scene, (d, t) => picker.setProgress(d, t));
+            // warm the ground stack along the path (builds Task 2b's WMO grids before the run, not mid-run)
+            for (let s = 0; s <= path.lengthTotal; s += 25) { const [x, y] = path.positionAt(s); const t = controller.groundSampler!.height(x, y, undefined, controller.eyeHeight); if (t !== undefined) controller.groundSampler!.height(x, y, t + controller.eyeHeight, controller.eyeHeight); }
+            controller.groundSampler!.reset();
+            const follower = new RouteFollower(path, { loop: settings.loop }, {
+                arrived: (stop) => hud.showToast(stop.name),
+                finished: () => hud.showToast("Route finished"),
+            });
+            controller.setRoute(follower);
+        },
+    });
+    const unbind = bindKeys(model, { onEscape: () => picker.show() });
+    picker.show();
 
     const cameraController = new TreadsimCameraController(controller, new FPSCameraController(), new LookOffset());
     // main.ts installs this after createScene resolves (viewer.setCameraController) — no noclip edit needed.
@@ -39,9 +66,9 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         current!.raf = requestAnimationFrame(loop);
         hud.render();
     };
-    current = { controller, hud, unbind, raf: requestAnimationFrame(loop) };
+    current = { controller, hud, picker, unbind, raf: requestAnimationFrame(loop) };
     (window as any).treadsim = {
-        controller, model, scene, ground: controller.groundSampler, cameraController,
+        controller, model, scene, ground: controller.groundSampler, cameraController, picker,
         teleport: (x: number, y: number) => controller.teleportTo(x, y),
     };
     return controller;
