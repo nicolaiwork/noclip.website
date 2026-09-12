@@ -87,6 +87,38 @@ describe("RouteFollower", () => {
         expect(Math.abs(yawLoop)).toBeLessThan(Math.PI / 4);
         expect(yawEnd).toBeCloseTo(-Math.PI / 2, 1);
     });
+    it("closed loop: wraps at lengthTotal, walking the closing segment without a position teleport", () => {
+        // A closed square (side 10): the last stop sits at waypointS[3], well before
+        // lengthTotal (~36-44, per RoutePath.test.ts) — the gap is the closing segment back to
+        // waypoint 0, which must be walked, not skipped by wrapping on the last stop.
+        const square = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+        const stops = [{ name: "Start", index: 0 }, { name: "End", index: 3 }];
+        const path = new RoutePath(square, stops, 0.5, false, { closed: true });
+        const f = new RouteFollower(path, { loop: true });
+        let prev = f.update(0, 0, 1); // dt = 0: establishes the initial pose without moving
+        let maxStep = 0;
+        let sawClosingSegment = false;
+        const steps = Math.ceil((2 * path.lengthTotal) / 0.5) + 4; // just over two laps at 0.5 u/frame
+        for (let i = 0; i < steps; i++) {
+            const pose = f.update(1, 0.5, 1); // ds = 0.5 u per frame
+            maxStep = Math.max(maxStep, Math.hypot(pose.x - prev.x, pose.y - prev.y));
+            if (f.s > path.waypointS[3] && f.s < path.lengthTotal) sawClosingSegment = true;
+            prev = pose;
+        }
+        expect(maxStep).toBeLessThan(1.5); // no teleport across the seam
+        expect(sawClosingSegment).toBe(true); // s actually walks the closing segment, not just wraps past it
+    });
+    it("closed loop: stops fire once per lap, in order, and stop 0 never fires", () => {
+        const wps = [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+        const stops = [{ name: "Start", index: 0 }, { name: "Mid", index: 1 }, { name: "End", index: 4 }];
+        const path = new RoutePath(wps, stops, 0.5, false, { closed: true });
+        const arrived: string[] = [];
+        const f = new RouteFollower(path, { loop: true }, { arrived: (s) => arrived.push(s.name) });
+        const steps = Math.ceil((2.5 * path.lengthTotal) / 0.5); // just over two laps, short of a third
+        for (let i = 0; i < steps; i++) f.update(1, 0.5, 1);
+        expect(arrived.slice(0, 4)).toEqual(["Mid", "End", "Mid", "End"]);
+        expect(arrived).not.toContain("Start");
+    });
     it("slews across the ±π seam the short way", () => {
         // path heading -x (yaw π) then bending slightly to -y: heading target just below -π+ε, current +π-ε
         const p = new RoutePath([{ x: 0, y: 0 }, { x: -100, y: 0 }, { x: -200, y: -20 }], [{ name: "a", index: 0 }, { name: "b", index: 2 }]);

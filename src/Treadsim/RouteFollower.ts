@@ -36,7 +36,13 @@ export class RouteFollower {
     }
 
     public get finished(): boolean { return this._finished; }
-    public get nextStopIndex(): number | undefined { return this._finished ? undefined : this.nextStop; }
+    // In loop mode, nextStop can transiently overflow past the last stop's index between firing
+    // its `arrived` and the position wrap at lengthTotal (the closing-segment gap on a closed
+    // path) — clamp to undefined rather than expose an out-of-range index.
+    public get nextStopIndex(): number | undefined {
+        if (this._finished) return undefined;
+        return this.nextStop <= this.path.stops.length - 1 ? this.nextStop : undefined;
+    }
 
     public distanceToNextStop(): number | undefined {
         const i = this.nextStopIndex;
@@ -69,11 +75,17 @@ export class RouteFollower {
         while (this.nextStop <= last && s >= this.path.stopS[this.nextStop] - 1e-9) {
             const i = this.nextStop;
             this.events.arrived?.(this.path.stops[i], i);
-            if (i === last) {
-                if (this.loop) { s -= L; this.nextStop = 1; if (s < 0) s = 0; }
-                else { this.s = L; this._finished = true; this.events.finished?.(); return; }
-            } else this.nextStop++;
+            if (i === last && !this.loop) {
+                this.s = L; this._finished = true; this.events.finished?.(); return;
+            }
+            this.nextStop++;
         }
+        // Loop mode wraps on reaching the end of the path (lengthTotal), not on reaching the
+        // last stop: on a closed RoutePath the last stop sits before lengthTotal (the closing
+        // segment is real distance still to walk), so wrapping on the stop instead would skip
+        // it and teleport across the seam. Stop 0 is the start and is not re-fired on wrap;
+        // stops from index 1 fire again on the next lap.
+        if (this.loop && L > 0) { while (s >= L) { s -= L; this.nextStop = 1; } }
         this.s = Math.max(0, Math.min(L, s));
     }
 }

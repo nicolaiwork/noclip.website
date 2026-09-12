@@ -3,7 +3,7 @@ import type { RouteFile, RouteStop, RouteWaypoint } from "./RouteFile.js";
 export interface DraftPoint { x: number; y: number; stop: string | null }
 export interface DraftState { id: string; name: string; mapId: number; wdtFileId: number; points: DraftPoint[]; selected: number }
 
-/** Every pair of consecutive points created through insert/insertAt/move/update is at least this far apart. */
+/** Every pair of consecutive points created through insert/insertAt/move/remove is at least this far apart. */
 export const MIN_POINT_SPACING = 0.05;
 /** Distance between waypoints when recording while flying (same as the Phase 3 recorder). */
 export const RECORD_SPACING = 8;
