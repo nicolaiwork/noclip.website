@@ -197,10 +197,14 @@ impl Wdc4Db2File {
         let field_size = self.field_storage_info[field_number].field_size_bits as usize;
         let result = match &self.field_storage_info[field_number].storage_type {
             StorageType::BitpackedIndexedArray { offset_bits: _, size_bits: _, array_count } => {
+                // treadsim: the record stores one shared index, not one per array slot; the
+                // palette holds `array_count` consecutive values per index (e.g. [day, night]
+                // interleaved), not the same value repeated. Verified against Era 1.15.9
+                // SoundAmbience id 35, whose day/night ambience kits differ (4183, 4184).
                 let index = read_field_to_u32(reader, field_offset, field_size)?;
                 let mut result: Vec<T> = Vec::with_capacity(*array_count as usize);
-                for _ in 0..*array_count as usize {
-                    let palette_element = self.get_palette_data(field_number, index as usize);
+                for slot in 0..*array_count as usize {
+                    let palette_element = self.get_palette_data(field_number, index as usize * (*array_count as usize) + slot);
                     result.push(from_u32(palette_element)?);
                 }
                 result
@@ -340,9 +344,10 @@ impl Wdc4Db2File {
 
 #[derive(Debug)]
 pub struct DatabaseTable<T> {
-    records: Vec<T>,
-    ids: Vec<u32>,
-    foreign_keys: Option<Vec<u32>>,
+    // treadsim: read by wow/zone_audio.rs
+    pub(crate) records: Vec<T>,
+    pub(crate) ids: Vec<u32>,
+    pub(crate) foreign_keys: Option<Vec<u32>>,
     copies: HashMap<u32, u32>,
 }
 
@@ -400,29 +405,48 @@ impl<T> DatabaseTable<T> {
             }
         }
 
-        let mut foreign_keys = None;
-        let relationship_start = id_list_start + id_list_size + 12; // idk
-        if db2.section_headers[0].relationship_data_size > 0 {
-            let mut keys = vec![0; records.len()];
-            reader.seek(SeekFrom::Start(relationship_start as u64))
-                .map_err(|err| err.to_string())?;
-            for _ in 0..records.len() {
-                let foreign_key = u32::from_reader_with_ctx(&mut reader, ())
-                    .map_err(|e| format!("{:?}", e))?;
-                let id = u32::from_reader_with_ctx(&mut reader, ())
-                    .map_err(|e| format!("{:?}", e))?;
-                keys[id as usize] = foreign_key;
-            }
-            foreign_keys = Some(keys);
-        }
-
+        // treadsim: copy table sits *before* the relationship map (not after — the previous
+        // code read them in file order assuming no gap, which is right only when both are
+        // empty). The relationship map also carries its own 12-byte header (num_entries,
+        // min_id, max_id) whose num_entries can exceed records.len(): copied rows get their
+        // own relationship entry too, referencing a row index >= records.len() that has no
+        // slot in `records` (copies resolve through `copies` instead), so those are skipped.
+        // Verified against Era 1.15.9 SoundKitEntry: copy_table_count=16, relationship
+        // entries=13375 for 13359 records, laid out id_list -> copy_table -> relationship_map.
+        let copy_table_start = id_list_start + id_list_size;
         let mut copies = HashMap::new();
+        reader.seek(SeekFrom::Start(copy_table_start as u64))
+            .map_err(|err| err.to_string())?;
         for _ in 0..db2.section_headers[0].copy_table_count {
             let id_of_new_row = u32::from_reader_with_ctx(&mut reader, ())
                 .map_err(|e| format!("{:?}", e))?;
             let id_of_old_row = u32::from_reader_with_ctx(&mut reader, ())
                 .map_err(|e| format!("{:?}", e))?;
             copies.insert(id_of_new_row, id_of_old_row);
+        }
+
+        let mut foreign_keys = None;
+        if db2.section_headers[0].relationship_data_size > 0 {
+            let relationship_start = copy_table_start + (db2.section_headers[0].copy_table_count as usize) * 8;
+            reader.seek(SeekFrom::Start(relationship_start as u64))
+                .map_err(|err| err.to_string())?;
+            let num_entries = u32::from_reader_with_ctx(&mut reader, ())
+                .map_err(|e| format!("{:?}", e))?;
+            let _min_id = u32::from_reader_with_ctx(&mut reader, ())
+                .map_err(|e| format!("{:?}", e))?;
+            let _max_id = u32::from_reader_with_ctx(&mut reader, ())
+                .map_err(|e| format!("{:?}", e))?;
+            let mut keys = vec![0; records.len()];
+            for _ in 0..num_entries {
+                let foreign_key = u32::from_reader_with_ctx(&mut reader, ())
+                    .map_err(|e| format!("{:?}", e))?;
+                let id = u32::from_reader_with_ctx(&mut reader, ())
+                    .map_err(|e| format!("{:?}", e))?;
+                if (id as usize) < keys.len() {
+                    keys[id as usize] = foreign_key;
+                }
+            }
+            foreign_keys = Some(keys);
         }
 
         Ok(DatabaseTable {
