@@ -53,15 +53,24 @@ export class AdtHeightField {
             throw new Error(`AdtHeightField: expected ${256 * CHUNK_STRIDE} floats, got ${data.length}`);
     }
 
-    public heightAt(adtX: number, adtY: number): number | undefined {
+    public chunkIndexAt(adtX: number, adtY: number): number {
         const d = this.data;
         for (let ci = 0; ci < 256; ci++) {
             const o = ci * CHUNK_STRIDE;
             const u = (d[o + 2] - adtX) / UNIT_SIZE;
             const v = (d[o + 3] - adtY) / UNIT_SIZE;
             if (u < -EPS || u > 8 + EPS || v < -EPS || v > 8 + EPS) continue;
-            return d[o + 4] + interpolateChunk(d, o + 5, Math.min(8, Math.max(0, u)), Math.min(8, Math.max(0, v)));
+            return ci;
         }
-        return undefined;
+        return -1;
+    }
+
+    public heightAt(adtX: number, adtY: number): number | undefined {
+        const ci = this.chunkIndexAt(adtX, adtY);
+        if (ci < 0) return undefined;
+        const d = this.data, o = ci * CHUNK_STRIDE;
+        const u = Math.min(8, Math.max(0, (d[o + 2] - adtX) / UNIT_SIZE));
+        const v = Math.min(8, Math.max(0, (d[o + 3] - adtY) / UNIT_SIZE));
+        return d[o + 4] + interpolateChunk(d, o + 5, u, v);
     }
 }

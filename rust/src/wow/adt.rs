@@ -188,6 +188,11 @@ impl Adt {
         out
     }
 
+    /// treadsim: AreaTable ID of every MCNK, in the same order as `take_height_field`'s chunks.
+    pub fn take_area_ids(&self) -> Vec<u32> {
+        self.map_chunks.iter().map(|mcnk| mcnk.header._area_id).collect()
+    }
+
     pub fn append_lod_obj_adt(&mut self, data: &[u8]) -> Result<(), String> {
         let mut chunked_data = ChunkedData::new(data);
         let mut lod_wmos: Option<Vec<LodWmoDefinition>> = None;

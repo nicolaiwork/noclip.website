@@ -1606,6 +1606,7 @@ export class AdtData {
     private indexBuffer: Uint16Array;
     private inner: WowAdt | null = null;
     public heightField: Float32Array | null = null; // treadsim: raw chunk heights, see WowAdt.take_height_field
+    public areaIds: Uint32Array | null = null; // treadsim: AreaTable ID per chunk, see WowAdt.take_area_ids
 
     constructor(public fileId: number, adt: WowAdt, public lightdbMapId: number) {
         this.inner = adt;
@@ -1704,6 +1705,7 @@ export class AdtData {
         renderResult.free();
 
         this.heightField = this.inner!.take_height_field();
+        this.areaIds = this.inner!.take_area_ids(); // treadsim
         this.inner!.free();
         this.inner = null;
     }
