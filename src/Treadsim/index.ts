@@ -23,13 +23,14 @@ import { WmoFloorCaster } from "./WmoFloorCaster.js";
 import { RouteEditor } from "./RouteEditor.js";
 import { loadCatalog, saveRoute } from "./RouteCatalog.js";
 
-let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; editor: RouteEditor; scene: WdtScene; unbind: () => void; raf: number; cancelKickStreaming: () => void; audioSink: HtmlAudioSink } | null = null;
+let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; editor: RouteEditor; scene: WdtScene; unbind: () => void; raf: number; cancelKickStreaming: () => void; audioSink: HtmlAudioSink; cancelAudioLoad: () => void } | null = null;
 
 /** Called by noclip's WoW scene loader once a continent scene exists. */
 export function installTreadsim(scene: WdtScene): TreadsimController {
     if (current) {
         cancelAnimationFrame(current.raf);
         current.cancelKickStreaming();
+        current.cancelAudioLoad();
         current.unbind();
         current.hud.destroy();
         current.picker.destroy();
@@ -55,12 +56,22 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     const areas = new AreaSampler(world);
     const audioSink = new HtmlAudioSink();
     let audio: ZoneAudioController | null = null;
+    // Audio must never start before the user has clicked Start (spec): `started` flips once
+    // in the picker's onStart and stays true for the rest of the install (Escape/Resume and
+    // the editor keep audio following the camera once a run has begun).
+    let started = false;
     const soundOptions = (s: typeof settings) => ({ enabled: s.sound, musicVolume: s.musicVolume, ambienceVolume: s.ambienceVolume });
     let currentSettings = settings;
+    // A scene reload while the tables are still in flight must not let the stale continuation
+    // overwrite the new session's window.treadsim.audio with a controller bound to a destroyed
+    // sink — mirrors the cancelKickStreaming guard below.
+    let audioLoadCancelled = false;
     loadZoneAudioDb().then((tables) => {
+        if (audioLoadCancelled) return;
         audio = new ZoneAudioController(tables, audioSink, soundOptions(currentSettings));
         (window as any).treadsim.audio = audio;
-    }).catch((e) => console.warn("treadsim: zone audio unavailable —", e));
+    }).catch((e) => { if (audioLoadCancelled) return; console.warn("treadsim: zone audio unavailable —", e); });
+    const cancelAudioLoad = (): void => { audioLoadCancelled = true; };
     const applySound = (s: typeof settings) => { currentSettings = s; audio?.setOptions(soundOptions(s)); };
     const toggleSound = () => {
         const s = { ...currentSettings, sound: !currentSettings.sound };
@@ -171,6 +182,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         onEdit: () => openEditor(),
         onSoundChange: (s) => applySound(s),
         onStart: async ({ route, settings }) => {
+            started = true;
             wasRunning = false; // the new route always starts paused
             look.reset();
             controller.worldScale = settings.worldScale;
@@ -213,7 +225,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         current!.raf = requestAnimationFrame(loop);
         hud.render();
         editor.tick();
-        if (audio) {
+        if (audio && started) {
             const m = cam.worldMatrix;
             const [ax, ay] = adtFromNoclip([m[12], m[13], m[14]]);
             const now = performance.now();
@@ -221,7 +233,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
             audioSink.tick(now);
         }
     };
-    current = { controller, hud, picker, editor, scene, unbind, raf: requestAnimationFrame(loop), cancelKickStreaming, audioSink };
+    current = { controller, hud, picker, editor, scene, unbind, raf: requestAnimationFrame(loop), cancelKickStreaming, audioSink, cancelAudioLoad };
     (window as any).treadsim = {
         controller, model, scene, ground: controller.groundSampler, cameraController, picker, editor,
         teleport: (x: number, y: number) => controller.teleportTo(x, y),
