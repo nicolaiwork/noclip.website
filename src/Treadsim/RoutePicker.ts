@@ -1,6 +1,6 @@
 import { loadCatalog, type RouteCatalogEntry, type RouteCatalogError } from "./RouteCatalog.js";
 import type { RouteFile } from "./RouteFile.js";
-import { clampWorldScale, saveSettings, WORLD_SCALE_RANGE, type Settings } from "./Settings.js";
+import { clampVolume, clampWorldScale, saveSettings, WORLD_SCALE_RANGE, type Settings } from "./Settings.js";
 import { DATA_SERVER } from "./ServerStatus.js";
 
 export interface PickerChoice { route: RouteFile | null /* null = free roam */; settings: Settings }
@@ -18,6 +18,9 @@ export class RoutePicker {
     private routeList: HTMLDivElement;
     private worldScaleInput: HTMLInputElement;
     private loopInput: HTMLInputElement;
+    private soundInput: HTMLInputElement;
+    private musicVolumeInput: HTMLInputElement;
+    private ambienceVolumeInput: HTMLInputElement;
     private startButton: HTMLButtonElement;
     private resumeButton: HTMLButtonElement;
     private editButton: HTMLButtonElement;
@@ -32,7 +35,7 @@ export class RoutePicker {
     private hasChosen = false;
     private resumable = false;
 
-    constructor(private opts: { settings: Settings; onStart(choice: PickerChoice): Promise<void>; onResume(): void; onEdit(): void; serverUp: () => Promise<boolean> }) {
+    constructor(private opts: { settings: Settings; onStart(choice: PickerChoice): Promise<void>; onResume(): void; onEdit(): void; serverUp: () => Promise<boolean>; onSoundChange?(settings: Settings): void }) {
         this.settings = opts.settings;
 
         this.overlay = document.createElement("div");
@@ -78,6 +81,31 @@ export class RoutePicker {
         this.loopInput.checked = this.settings.loop;
         loopWrap.append(this.loopInput, document.createTextNode("Loop route"));
 
+        const soundWrap = document.createElement("div");
+        soundWrap.style.cssText = "display:flex;flex-direction:column;gap:8px;font-size:14px";
+        const soundToggle = document.createElement("label");
+        soundToggle.style.cssText = "display:flex;align-items:center;gap:8px";
+        this.soundInput = document.createElement("input");
+        this.soundInput.type = "checkbox";
+        this.soundInput.checked = this.settings.sound;
+        soundToggle.append(this.soundInput, document.createTextNode("Music and ambience (M toggles during a run)"));
+        const slider = (label: string, value: number) => {
+            const wrap = document.createElement("label");
+            wrap.style.cssText = "display:flex;align-items:center;gap:8px";
+            const input = document.createElement("input");
+            input.type = "range"; input.min = "0"; input.max = "1"; input.step = "0.05"; input.value = String(value);
+            input.style.width = "160px";
+            const text = document.createElement("span"); text.style.cssText = "width:90px"; text.textContent = label;
+            wrap.append(text, input);
+            return { wrap, input };
+        };
+        const music = slider("Music", this.settings.musicVolume);
+        const ambience = slider("Ambience", this.settings.ambienceVolume);
+        this.musicVolumeInput = music.input; this.ambienceVolumeInput = ambience.input;
+        soundWrap.append(soundToggle, music.wrap, ambience.wrap);
+        const onSound = () => { this.settings = this.readSettings(); saveSettings(localStorage, this.settings); this.opts.onSoundChange?.(this.settings); };
+        this.soundInput.oninput = onSound; this.musicVolumeInput.oninput = onSound; this.ambienceVolumeInput.oninput = onSound;
+
         this.startButton = document.createElement("button");
         this.startButton.textContent = "Start";
         this.startButton.style.cssText = "font:600 18px system-ui;padding:12px 20px;border-radius:10px;border:0;background:#3b82f6;color:#fff;cursor:pointer";
@@ -105,7 +133,7 @@ export class RoutePicker {
         this.errorLine = document.createElement("div");
         this.errorLine.style.cssText = "font-size:14px;color:#f87171;min-height:18px";
 
-        panel.append(title, this.statusLine, this.routeList, worldScaleWrap, loopWrap, buttonRow, this.progress, this.progressLabel, this.errorLine);
+        panel.append(title, this.statusLine, this.routeList, worldScaleWrap, loopWrap, soundWrap, buttonRow, this.progress, this.progressLabel, this.errorLine);
         this.overlay.appendChild(panel);
         document.body.appendChild(this.overlay);
 
@@ -160,6 +188,21 @@ export class RoutePicker {
         }
     }
 
+    /** Current inputs as Settings (lastRouteId from the current settings; start() overrides it). */
+    private readSettings(): Settings {
+        return {
+            worldScale: clampWorldScale(parseFloat(this.worldScaleInput.value)),
+            loop: this.loopInput.checked,
+            lastRouteId: this.settings.lastRouteId,
+            sound: this.soundInput.checked,
+            musicVolume: clampVolume(parseFloat(this.musicVolumeInput.value)),
+            ambienceVolume: clampVolume(parseFloat(this.ambienceVolumeInput.value)),
+        };
+    }
+
+    /** Keeps the checkbox in step when `M` toggles sound during a run. */
+    public setSound(on: boolean): void { this.soundInput.checked = on; this.settings = { ...this.settings, sound: on }; }
+
     private async refreshStatus(): Promise<void> {
         this.statusText.textContent = "Data server: checking…";
         const up = await this.opts.serverUp();
@@ -175,8 +218,7 @@ export class RoutePicker {
         const selected = this.routeList.querySelector("input[type=radio]:checked") as HTMLInputElement | null;
         const routeId = selected?.value || null;
         const route = routeId ? this.catalog.find((e) => e.route.id === routeId)?.route ?? null : null;
-        const worldScale = clampWorldScale(parseFloat(this.worldScaleInput.value));
-        const settings: Settings = { worldScale, loop: this.loopInput.checked, lastRouteId: route ? route.id : null };
+        const settings: Settings = { ...this.readSettings(), lastRouteId: route ? route.id : null };
         this.settings = settings;
         saveSettings(localStorage, settings);
         try {

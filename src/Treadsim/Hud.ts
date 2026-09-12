@@ -110,11 +110,12 @@ export class Hud {
  * route picker. While `isBlocked` (the picker is visible) Enter/+/=/- are ignored so
  * nothing drives the treadmill behind the overlay; Escape still works either way.
  */
-export function bindKeys(model: ManualSpeedModel, handlers: { onEscape(): void; isBlocked?(): boolean }): () => void {
+export function bindKeys(model: ManualSpeedModel, handlers: { onEscape(): void; isBlocked?(): boolean; onToggleSound?(): void }): () => void {
     const onKey = (e: KeyboardEvent) => {
         if (e.metaKey || e.ctrlKey || e.altKey) return;
         if (e.key === "Escape") { handlers.onEscape(); return; }
         if (handlers.isBlocked?.()) return;
+        if (e.code === "KeyM") { handlers.onToggleSound?.(); return; }
         if (e.key === "+" || e.key === "=") model.step(0.5);
         else if (e.key === "-") model.step(-0.5);
         else if (e.key === "Enter") {

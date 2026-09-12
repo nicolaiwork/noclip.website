@@ -8,7 +8,12 @@ import { LookOffset } from "./LookOffset.js";
 import { Hud, bindKeys } from "./Hud.js";
 import { RoutePicker } from "./RoutePicker.js";
 import { isServerUp } from "./ServerStatus.js";
-import { loadSettings } from "./Settings.js";
+import { loadSettings, saveSettings } from "./Settings.js";
+import { AreaSampler } from "./AreaSampler.js";
+import { loadZoneAudioDb } from "./ZoneAudioDb.js";
+import { ZoneAudioController } from "./ZoneAudioController.js";
+import { HtmlAudioSink } from "./HtmlAudioSink.js";
+import { adtFromNoclip } from "./coords.js";
 import { RoutePath } from "./RoutePath.js";
 import { RouteFollower } from "./RouteFollower.js";
 import { preloadTiles } from "./RoutePreloader.js";
@@ -18,7 +23,7 @@ import { WmoFloorCaster } from "./WmoFloorCaster.js";
 import { RouteEditor } from "./RouteEditor.js";
 import { loadCatalog, saveRoute } from "./RouteCatalog.js";
 
-let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; editor: RouteEditor; scene: WdtScene; unbind: () => void; raf: number; cancelKickStreaming: () => void } | null = null;
+let current: { controller: TreadsimController; hud: Hud; picker: RoutePicker; editor: RouteEditor; scene: WdtScene; unbind: () => void; raf: number; cancelKickStreaming: () => void; audioSink: HtmlAudioSink } | null = null;
 
 /** Called by noclip's WoW scene loader once a continent scene exists. */
 export function installTreadsim(scene: WdtScene): TreadsimController {
@@ -31,6 +36,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         current.editor.destroy();
         current.scene.onDebugDraw = null;
         current.controller.destroy();
+        current.audioSink.destroy();
     }
     const model = new ManualSpeedModel();
     const controller = new TreadsimController(model);
@@ -43,6 +49,24 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
 
     const settings = loadSettings(localStorage);
     controller.worldScale = settings.worldScale;
+
+    // Zone music and ambience (spec §7). Tables load in the background; until they arrive `audio`
+    // is null and the run is silent. Sound is off by default; the picker and `M` toggle it.
+    const areas = new AreaSampler(world);
+    const audioSink = new HtmlAudioSink();
+    let audio: ZoneAudioController | null = null;
+    const soundOptions = (s: typeof settings) => ({ enabled: s.sound, musicVolume: s.musicVolume, ambienceVolume: s.ambienceVolume });
+    let currentSettings = settings;
+    loadZoneAudioDb().then((tables) => {
+        audio = new ZoneAudioController(tables, audioSink, soundOptions(currentSettings));
+        (window as any).treadsim.audio = audio;
+    }).catch((e) => console.warn("treadsim: zone audio unavailable —", e));
+    const applySound = (s: typeof settings) => { currentSettings = s; audio?.setOptions(soundOptions(s)); };
+    const toggleSound = () => {
+        const s = { ...currentSettings, sound: !currentSettings.sound };
+        saveSettings(localStorage, s); applySound(s); picker.setSound(s.sound);
+        hud.showToast(s.sound ? "Sound on" : "Sound off", 1500);
+    };
     // Escape and the HUD's Routes button behave identically: pause, then show the picker.
     // wasRunning records whether the run should resume when the picker is dismissed
     // without picking a new route (Resume / Escape toggle); a successful Start always
@@ -145,10 +169,12 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         serverUp: isServerUp,
         onResume: resumePicker,
         onEdit: () => openEditor(),
+        onSoundChange: (s) => applySound(s),
         onStart: async ({ route, settings }) => {
             wasRunning = false; // the new route always starts paused
             look.reset();
             controller.worldScale = settings.worldScale;
+            applySound(settings);
             if (model.running) model.toggleRunning();
             if (!route) { controller.setRoute(null); return; }
             const path = new RoutePath(route.waypoints, route.stops);
@@ -179,6 +205,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
             else openPicker();
         },
         isBlocked: () => picker.visible || editor.active,
+        onToggleSound: toggleSound,
     });
     picker.show();
 
@@ -186,11 +213,19 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
         current!.raf = requestAnimationFrame(loop);
         hud.render();
         editor.tick();
+        if (audio) {
+            const m = cam.worldMatrix;
+            const [ax, ay] = adtFromNoclip([m[12], m[13], m[14]]);
+            const now = performance.now();
+            audio.tick(now, areas.areaAt(ax, ay), scene.mainView.time);
+            audioSink.tick(now);
+        }
     };
-    current = { controller, hud, picker, editor, scene, unbind, raf: requestAnimationFrame(loop), cancelKickStreaming };
+    current = { controller, hud, picker, editor, scene, unbind, raf: requestAnimationFrame(loop), cancelKickStreaming, audioSink };
     (window as any).treadsim = {
         controller, model, scene, ground: controller.groundSampler, cameraController, picker, editor,
         teleport: (x: number, y: number) => controller.teleportTo(x, y),
+        areas, audio,
     };
     return controller;
 }
