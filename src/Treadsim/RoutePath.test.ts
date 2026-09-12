@@ -89,4 +89,56 @@ describe("RoutePath.tileCoords", () => {
         expect(path.tileCoords()).toEqual([[31, 49], [31, 48]]);
         expect(TILE_SIZE).toBeCloseTo(533.333, 2);
     });
+
+    it("for a closed path, includes the tiles of the closing segment", () => {
+        // A loop that goes from waypoint 0 (tile col 48) north to col 48's northern
+        // neighbour, west across into col 50, then back south to waypoint 3 (tile col 50) —
+        // the open path's own internal edges get from col 48 to col 50 by going the long way
+        // around (through cols 47), never touching col 49 directly at this row. Only the
+        // closing edge (waypoint 3 -> waypoint 0, straight across at this row) cuts directly
+        // through col 49, so it alone puts tile [31, 49] on the list.
+        const wps = [{ x: -8600, y: 200 }, { x: -8600, y: 2000 }, { x: -9900, y: 2000 }, { x: -9900, y: 200 }];
+        const stops = [{ name: "A", index: 0 }, { name: "B", index: 3 }];
+        const open = new RoutePath(wps, stops, 0.5, false);
+        expect(open.tileCoords().some(([r, c]) => r === 31 && c === 49)).toBe(false);
+        const closed = new RoutePath(wps, stops, 0.5, false, { closed: true });
+        expect(closed.tileCoords().some(([r, c]) => r === 31 && c === 49)).toBe(true);
+    });
+});
+
+describe("RoutePath closed loop", () => {
+    // A 10x10 square: the closing edge (waypoint 3 -> waypoint 0) turns it from an open
+    // 3-segment polyline (30 u of chord) into a real 4-sided loop (40 u of chord).
+    const square = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+    const stops = [{ name: "A", index: 0 }, { name: "B", index: 3 }];
+
+    it("has ~4x10 arc length when closed (curvature rounds the corners a little) vs ~3x10 open", () => {
+        const closed = new RoutePath(square, stops, 0.5, false, { closed: true });
+        expect(closed.lengthTotal).toBeGreaterThan(36);
+        expect(closed.lengthTotal).toBeLessThan(44);
+
+        const open = new RoutePath(square, stops, 0.5, false);
+        expect(open.lengthTotal).toBeGreaterThan(27);
+        expect(open.lengthTotal).toBeLessThan(33);
+    });
+
+    it("wraps continuously across the seam when closed; an open path just ends at the last waypoint", () => {
+        const closed = new RoutePath(square, stops, 0.5, false, { closed: true });
+        const end = closed.positionAt(closed.lengthTotal);
+        const start = closed.positionAt(0);
+        expect(end[0]).toBeCloseTo(start[0], 6);
+        expect(end[1]).toBeCloseTo(start[1], 6);
+
+        const [tx0, ty0] = closed.tangentAt(0.01);
+        const [tx1, ty1] = closed.tangentAt(closed.lengthTotal - 0.01);
+        const h0 = Math.atan2(ty0, tx0) * 180 / Math.PI;
+        const h1 = Math.atan2(ty1, tx1) * 180 / Math.PI;
+        const delta = Math.abs(((h0 - h1 + 540) % 360) - 180);
+        expect(delta).toBeLessThan(45);
+
+        const open = new RoutePath(square, stops, 0.5, false);
+        const openEnd = open.positionAt(open.lengthTotal);
+        expect(openEnd[0]).toBeCloseTo(square[3].x, 6);
+        expect(openEnd[1]).toBeCloseTo(square[3].y, 6);
+    });
 });

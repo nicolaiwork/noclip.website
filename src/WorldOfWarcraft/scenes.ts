@@ -729,7 +729,7 @@ export class WdtScene implements Viewer.SceneGfx {
         }
         renderInstManager.setCurrentList(this.renderInstListMain);
 
-        if (!this.hideDoodads) // treadsim: editor "Hide trees"
+        if (!this.hideDoodads) { // treadsim: editor "Hide trees"
         for (let [modelId, renderer] of this.modelRenderers.entries()) {
             const doodads = frame.doodads
                 .get(modelId)!
@@ -748,6 +748,7 @@ export class WdtScene implements Viewer.SceneGfx {
                 template.setGfxProgram(this.particleProgram);
                 renderer.prepareToRenderParticles(renderInstManager, doodads);
             }
+        }
         }
 
         renderInstManager.popTemplate();

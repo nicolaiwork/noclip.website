@@ -237,6 +237,9 @@ export class RoutePicker {
 
     public get canResume(): boolean { return this.resumable; }
 
+    /** Feedback line for input that has no other visible effect (e.g. Escape with nothing to resume). */
+    public setError(text: string): void { this.errorLine.textContent = text; }
+
     public show(opts: { canResume?: boolean } = {}): void {
         this.resumable = opts.canResume ?? this.hasChosen;
         this.resumeButton.style.display = this.resumable ? "" : "none";

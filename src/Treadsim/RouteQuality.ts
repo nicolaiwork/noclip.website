@@ -9,6 +9,9 @@ import { lateralOffsets } from "./RouteSmoothing.js";
  * exempts them (stops sit on genuine corners like the Goldshire crossroads, 85 deg/u).
  */
 export const SPIKE_THRESHOLD_DEG = 45;
+// A declared stop exempts a corner from the 45 deg/u gate above, not from this: above 120
+// deg/u the camera whips even at a declared corner, so every route (on-stop or not) must stay under it.
+export const SPIKE_CEILING_DEG = 120;
 export const MAX_GAP = 15;
 export const MIN_GAP = 1;
 

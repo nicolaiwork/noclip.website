@@ -139,7 +139,10 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     // Editor mode (spec §6): fly freely, drop waypoints, save into routes/. Nothing runs meanwhile.
     const editor = new RouteEditor({
         camera: cam,
-        heightAt: (x, y) => controller.groundSampler!.height(x, y, undefined, controller.eyeHeight),
+        // Cast down from the camera's own height (not `undefined`, ground level) so a click on an
+        // elevated WMO deck (e.g. the Westbrook bridge) lands the waypoint on the deck, not the
+        // terrain far below it (Minor 1).
+        heightAt: (x, y) => controller.groundSampler!.height(x, y, adtFromNoclip([cam.worldMatrix[12], cam.worldMatrix[13], cam.worldMatrix[14]])[2], controller.eyeHeight),
         adtCount: () => world.adts.length,
         clipFromWorld: () => cam.clipFromWorldMatrix,
         toplevel: viewer.inputManager.toplevel,
@@ -189,7 +192,9 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
             applySound(settings);
             if (model.running) model.toggleRunning();
             if (!route) { controller.setRoute(null); return; }
-            const path = new RoutePath(route.waypoints, route.stops);
+            // Loop mode: a closed path (real wrap-around neighbours + closing segment) so the
+            // follower's wrap at lengthTotal does not teleport across the gap to waypoint 0.
+            const path = new RoutePath(route.waypoints, route.stops, undefined, undefined, { closed: settings.loop });
             await preloadTiles(path.tileCoords(), world, scene, (d, t) => picker.setProgress(d, t));
             // warm the ground stack along the path (builds Task 2b's WMO grids before the run, not
             // mid-run); carry the eye height forward like the follower does so WMO floors above the
@@ -213,7 +218,7 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
     const unbind = bindKeys(model, {
         onEscape: () => {
             if (editor.active) closeEditor();
-            else if (picker.visible) { if (picker.canResume) resumePicker(); }
+            else if (picker.visible) { if (picker.canResume) resumePicker(); else picker.setError("Nothing to resume yet — pick a route and Start"); }
             else openPicker();
         },
         isBlocked: () => picker.visible || editor.active,

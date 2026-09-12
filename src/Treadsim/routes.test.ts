@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseRouteFile } from "./RouteFile.js";
-import { reportRoute } from "./RouteQuality.js";
+import { reportRoute, SPIKE_CEILING_DEG } from "./RouteQuality.js";
 
 // The repo's routes/ directory (renderer is a submodule at <root>/renderer). Absent in a
 // standalone clone of the renderer fork, which has no sibling routes/ directory.
@@ -24,6 +24,8 @@ if (!hasRoutesDir) {
                 expect(report.gaps).toEqual([]);
                 // spikes at declared stops are genuine corners (Goldshire crossroads: 85 deg/u)
                 expect(report.spikes.filter((s) => !s.atStop)).toEqual([]);
+                // ... but even a declared stop cannot exempt a whip above the hard ceiling
+                expect(report.spikes.filter((s) => s.degPerUnit > SPIKE_CEILING_DEG)).toEqual([]);
             });
         }
     });

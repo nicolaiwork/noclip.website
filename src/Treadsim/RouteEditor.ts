@@ -278,7 +278,8 @@ export class RouteEditor {
             const route = this.validated();
             const file = await this.deps.saveRoute(route);
             saveDraft(this.storage, this.draft);
-            this.setStatus(`Saved routes/${file} — it is in the start screen's list now`);
+            const n = this.warnings.size;
+            this.setStatus(`Saved routes/${file}${n ? ` — ${n} quality warning${n > 1 ? "s" : ""} (pnpm test will fail on off-stop spikes and gaps)` : ""} — it is in the start screen's list now`);
             void this.refreshCatalog();
         } catch (e) { this.setStatus(`Not saved: ${e instanceof Error ? e.message : String(e)}`); }
     }

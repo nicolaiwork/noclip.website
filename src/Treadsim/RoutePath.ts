@@ -31,25 +31,35 @@ export class RoutePath {
     public readonly stopS: number[];
     public readonly lengthTotal: number;
 
-    constructor(rawWaypoints: RouteWaypoint[], public readonly stops: RouteStop[], spacing = 0.5, smoothing: SmoothingOptions | false = DEFAULT_SMOOTHING) {
+    constructor(rawWaypoints: RouteWaypoint[], public readonly stops: RouteStop[], spacing = 0.5, smoothing: SmoothingOptions | false = DEFAULT_SMOOTHING, opts: { closed?: boolean } = {}) {
         if (rawWaypoints.length < 2) throw new Error("RoutePath: needs at least two waypoints");
+        const closed = opts.closed ?? false;
         const waypoints = smoothing === false ? rawWaypoints : smoothWaypoints(rawWaypoints, stops, smoothing);
         const n = waypoints.length;
+        // Open: the Catmull-Rom neighbour past either end is a reflected phantom point (there is
+        // no real waypoint there). Closed: there is no open end — the spline wraps, so the
+        // neighbour across the seam is the real wrap-around waypoint, and a closing segment from
+        // the last waypoint back to the first is part of the loop.
         const at = (i: number): RouteWaypoint => {
+            if (closed) return waypoints[((i % n) + n) % n];
             if (i < 0) return { x: 2 * waypoints[0].x - waypoints[1].x, y: 2 * waypoints[0].y - waypoints[1].y };
             if (i >= n) return { x: 2 * waypoints[n - 1].x - waypoints[n - 2].x, y: 2 * waypoints[n - 1].y - waypoints[n - 2].y };
             return waypoints[i];
         };
+        const segCount = closed ? n : n - 1;
         this.push(waypoints[0].x, waypoints[0].y);
         this.waypointS.push(0);
-        for (let i = 0; i < n - 1; i++) {
-            const chord = Math.hypot(waypoints[i + 1].x - waypoints[i].x, waypoints[i + 1].y - waypoints[i].y);
+        for (let i = 0; i < segCount; i++) {
+            const p1 = at(i), p2 = at(i + 1);
+            const chord = Math.hypot(p2.x - p1.x, p2.y - p1.y);
             const steps = Math.max(1, Math.ceil(chord / spacing));
             for (let k = 1; k <= steps; k++) {
                 const [x, y] = catmullRom(at(i - 1), at(i), at(i + 1), at(i + 2), k / steps);
                 this.push(x, y);
             }
-            this.waypointS.push(this.cum[this.cum.length - 1]);
+            // The closing segment (i === n-1 when closed) ends back at waypoint 0, already
+            // recorded at s=0 above; it is not a new original waypoint, so no waypointS entry.
+            if (!(closed && i === n - 1)) this.waypointS.push(this.cum[this.cum.length - 1]);
         }
         this.lengthTotal = this.cum[this.cum.length - 1];
         this.stopS = stops.map((s) => this.waypointS[s.index]);

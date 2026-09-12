@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RoutePath } from "./RoutePath.js";
-import { gapIssues, headingSpikes, reportRoute, SPIKE_THRESHOLD_DEG } from "./RouteQuality.js";
+import { gapIssues, headingSpikes, reportRoute, SPIKE_CEILING_DEG, SPIKE_THRESHOLD_DEG } from "./RouteQuality.js";
 
 const straight = (n = 20, gap = 8) => Array.from({ length: n }, (_, i) => ({ x: i * gap, y: 0 }));
 const ends = (n: number) => [{ name: "A", index: 0 }, { name: "B", index: n - 1 }];
@@ -34,6 +34,16 @@ describe("headingSpikes", () => {
         const spikes = headingSpikes(new RoutePath(arc, ends(20), 0.5, false), 0);
         expect(spikes.length).toBe(1);
         expect(spikes[0].degPerUnit).toBeGreaterThan(0);
+    });
+    it("reports a spike above the hard ceiling even when it sits on a declared stop", () => {
+        // a sharp near-reversal at the middle waypoint, declared a stop: a stop exempts the
+        // 45 deg/u gate, but not the 120 deg/u ceiling (Minor 5).
+        const wps = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 1 }];
+        const stops = [{ name: "A", index: 0 }, { name: "Corner", index: 1 }, { name: "B", index: 2 }];
+        const spikes = headingSpikes(new RoutePath(wps, stops, 0.5, false));
+        const atCorner = spikes.filter((s) => s.waypoint === 1);
+        expect(atCorner.length).toBeGreaterThan(0);
+        expect(atCorner.some((s) => s.atStop && s.degPerUnit > SPIKE_CEILING_DEG)).toBe(true);
     });
 });
 

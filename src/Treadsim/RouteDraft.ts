@@ -15,9 +15,9 @@ const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.
 /**
  * The route editor's model: an ordered list of points, each optionally a named stop, a
  * selection that says where the next dropped point goes, and an undo history. Points created
- * through insert/insertAt/move/update maintain the invariant that every pair of consecutive
- * points is at least MIN_POINT_SPACING apart; fromRoute/fromJSON accept whatever points they
- * are given, and Save is what actually enforces validity, by going through parseRouteFile.
+ * through insert/insertAt/move/remove maintain the invariant that every pair of consecutive
+ * points is at least MIN_POINT_SPACING apart; fromJSON/fromRoute accept whatever points they
+ * are given, and Save is what actually enforces validity, by re-validating through parseRouteFile.
  * Pure and DOM-free; the panel and the preview re-render whenever `version` changes.
  */
 export class RouteDraft {
@@ -125,13 +125,6 @@ export class RouteDraft {
     public setStop(i: number, name: string | null): void {
         if (i < 0 || i >= this.points.length) return;
         this.mutate(() => { this.points[i].stop = name && name.trim() ? name.trim() : null; });
-    }
-
-    public update(i: number, x: number, y: number): void {
-        if (i < 0 || i >= this.points.length) return;
-        // neighbours of i are i-1 and i+1: check against the slots around it, ignoring itself
-        if (this.tooClose(i, x, y, i) || this.tooClose(i + 1, x, y, i)) return;
-        this.mutate(() => { this.points[i].x = x; this.points[i].y = y; });
     }
 
     public clear(): void {

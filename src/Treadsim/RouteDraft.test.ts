@@ -48,7 +48,7 @@ describe("RouteDraft", () => {
         const d = new RouteDraft();
         d.insert(0, 0); d.insert(10, 0);
         d.setStop(1, "B");
-        d.update(1, 12, 1);
+        d.setStop(1, "C");
         const v = d.version;
         expect(d.undo()).toBe(true);
         expect(d.points[1]).toEqual({ x: 10, y: 0, stop: "B" });
