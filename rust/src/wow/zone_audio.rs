@@ -101,6 +101,10 @@ impl ZoneAudioDb {
 
         let kit_volumes = kits.records.iter().map(|k| (k.id, k.volume)).collect();
         let mut kit_files: HashMap<u32, Vec<u32>> = HashMap::new();
+        // treadsim: deliberately hard-errors if SoundKitEntry ever ships empty (0 records) — an
+        // empty table takes DatabaseTable's early-return path where foreign_keys is always None,
+        // so this can't be told apart from "the relationship block is genuinely missing"; both are
+        // fatal for zone audio (no kit -> file mapping at all), so failing loudly here is correct.
         let keys = entries.foreign_keys.as_ref().ok_or("SoundKitEntry has no relationship block")?;
         for (i, e) in entries.records.iter().enumerate() {
             kit_files.entry(keys[i]).or_default().push(e.file_data_id);
@@ -144,7 +148,7 @@ mod test {
     /// any run of the renderer or by `curl localhost:8081/file/<id>`. Run with `cargo test -- --ignored`.
     fn cached(id: u32) -> Vec<u8> {
         let home = std::env::var("HOME").unwrap();
-        std::fs::read(format!("{home}/.cache/treadsim/cdn/files/{id}")).unwrap_or_else(|e| panic!("{}", format!("cache miss for {id}: {e}")))
+        std::fs::read(format!("{home}/.cache/treadsim/cdn/files/{id}")).unwrap_or_else(|e| panic!("cache miss for {}: {}", id, e))
     }
 
     #[test]

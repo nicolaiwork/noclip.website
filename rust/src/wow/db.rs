@@ -362,6 +362,11 @@ impl<T> DatabaseTable<T> {
         if db2.section_headers.is_empty() || db2.header.record_count == 0 {
             return Ok(DatabaseTable { records: Vec::new(), ids: Vec::new(), foreign_keys: None, copies: HashMap::new() });
         }
+        // treadsim: sparse (offset-map) tables store variable-length records and put the offset map
+        // between the copy table and the relationship map; this reader handles neither.
+        if db2.section_headers[0].offset_map_id_count > 0 {
+            return Err(format!("DB2 table {:#x} uses an offset map (sparse records); unsupported", db2.header.table_hash));
+        }
         assert!(db2.section_headers.len() == 1);
         let mut records: Vec<T> = Vec::with_capacity(db2.header.record_count as usize);
         let mut ids: Vec<u32> = Vec::with_capacity(db2.header.record_count as usize);
