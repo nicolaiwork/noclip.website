@@ -108,6 +108,42 @@ describe("RouteFollower", () => {
         expect(maxStep).toBeLessThan(1.5); // no teleport across the seam
         expect(sawClosingSegment).toBe(true); // s actually walks the closing segment, not just wraps past it
     });
+    it("nextStopIndex is undefined (not a stale index) in the closing-segment gap, and 1 again after the wrap", () => {
+        // Same closed square as the teleport test above: the last stop ("End") sits at
+        // waypointS[3], strictly before lengthTotal (the closing segment back to waypoint 0 is
+        // real distance still to walk) — the gap between them is exactly where nextStop would
+        // transiently equal stops.length if it were not clamped (final review folded minor:
+        // this used to make distanceToNextStop() return NaN instead of undefined).
+        const square = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+        const stops = [{ name: "Start", index: 0 }, { name: "End", index: 3 }];
+        const path = new RoutePath(square, stops, 0.5, false, { closed: true });
+        const f = new RouteFollower(path, { loop: true });
+        const lastStopS = path.stopS[path.stopS.length - 1];
+        expect(lastStopS).toBeLessThan(path.lengthTotal); // the gap actually exists on this fixture
+
+        // Walk in small steps until s is strictly inside the gap (past the last stop's arrival,
+        // short of the wrap).
+        let sawGap = false;
+        while (f.s <= lastStopS + 1e-9 || f.s >= path.lengthTotal - 1e-9) {
+            f.update(1, 0.5, 1);
+            if (f.s > lastStopS + 1e-9 && f.s < path.lengthTotal - 1e-9) {
+                sawGap = true;
+                expect(f.nextStopIndex).toBeUndefined();
+                expect(f.distanceToNextStop()).toBeUndefined();
+                break;
+            }
+        }
+        expect(sawGap).toBe(true);
+
+        // Keep walking through the wrap: nextStopIndex becomes 1 again ("End" of the next lap).
+        let wrapped = false;
+        for (let i = 0; i < 50 && !wrapped; i++) {
+            f.update(1, 0.5, 1);
+            if (f.s < lastStopS) wrapped = true;
+        }
+        expect(wrapped).toBe(true);
+        expect(f.nextStopIndex).toBe(1);
+    });
     it("closed loop: stops fire once per lap, in order, and stop 0 never fires", () => {
         const wps = [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
         const stops = [{ name: "Start", index: 0 }, { name: "Mid", index: 1 }, { name: "End", index: 4 }];

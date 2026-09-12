@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RoutePath } from "./RoutePath.js";
+import { RoutePath, MAX_LOOP_SEAM } from "./RoutePath.js";
 import { TILE_SIZE } from "./AdtHeightField.js";
 
 describe("RoutePath on a straight line", () => {
@@ -140,5 +140,25 @@ describe("RoutePath closed loop", () => {
         const openEnd = open.positionAt(open.lengthTotal);
         expect(openEnd[0]).toBeCloseTo(square[3].x, 6);
         expect(openEnd[1]).toBeCloseTo(square[3].y, 6);
+    });
+});
+
+describe("RoutePath.isClosable", () => {
+    // Same square as "RoutePath closed loop" above: last waypoint (0, 10) is 10 u from the
+    // first (0, 0) — well inside MAX_LOOP_SEAM.
+    const square = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+
+    it("is closable when the last waypoint is within MAX_LOOP_SEAM of the first", () => {
+        expect(RoutePath.isClosable(square)).toBe(true);
+        expect(Math.hypot(square[3].x - square[0].x, square[3].y - square[0].y)).toBeLessThan(MAX_LOOP_SEAM);
+    });
+
+    it("is not closable once the last waypoint is moved far from the first", () => {
+        const farSquare = [square[0], square[1], square[2], { x: square[3].x - 20, y: square[3].y }];
+        expect(RoutePath.isClosable(farSquare)).toBe(false);
+    });
+
+    it("is not closable with only two waypoints, even if they coincide", () => {
+        expect(RoutePath.isClosable([{ x: 0, y: 0 }, { x: 0, y: 0 }])).toBe(false);
     });
 });

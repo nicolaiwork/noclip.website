@@ -193,8 +193,12 @@ export function installTreadsim(scene: WdtScene): TreadsimController {
             if (model.running) model.toggleRunning();
             if (!route) { controller.setRoute(null); return; }
             // Loop mode: a closed path (real wrap-around neighbours + closing segment) so the
-            // follower's wrap at lengthTotal does not teleport across the gap to waypoint 0.
-            const path = new RoutePath(route.waypoints, route.stops, undefined, undefined, { closed: settings.loop });
+            // follower's wrap at lengthTotal does not teleport across the gap to waypoint 0 —
+            // but only when the route's own seam is short (RoutePath.isClosable). Checking Loop
+            // on a point-to-point route (the seam is hundreds of metres) instead falls back to
+            // the pre-Phase-5 behaviour: an open path that wraps by restarting at waypoint 0.
+            const closed = settings.loop && RoutePath.isClosable(route.waypoints);
+            const path = new RoutePath(route.waypoints, route.stops, undefined, undefined, { closed });
             await preloadTiles(path.tileCoords(), world, scene, (d, t) => picker.setProgress(d, t));
             // warm the ground stack along the path (builds Task 2b's WMO grids before the run, not
             // mid-run); carry the eye height forward like the follower does so WMO floors above the

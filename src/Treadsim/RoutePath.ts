@@ -4,6 +4,11 @@ import { DEFAULT_SMOOTHING, smoothWaypoints, type SmoothingOptions } from "./Rou
 
 const ALPHA = 0.5; // centripetal Catmull-Rom
 
+// Same value as RouteQuality.MAX_GAP (15 u) and the same reason: past this distance the closing
+// segment reads as a separate, unauthored stretch of road rather than a seam. Duplicated (not
+// imported) because RouteQuality.ts imports RoutePath.ts — importing back would be a cycle.
+export const MAX_LOOP_SEAM = 15;
+
 function catmullRom(p0: RouteWaypoint, p1: RouteWaypoint, p2: RouteWaypoint, p3: RouteWaypoint, u: number): [number, number] {
     // Barry–Goldman pyramid with knot spacing |Pi+1 - Pi|^alpha. u in [0,1] maps to [t1,t2].
     const d = (a: RouteWaypoint, b: RouteWaypoint) => Math.pow(Math.hypot(b.x - a.x, b.y - a.y), ALPHA);
@@ -100,6 +105,18 @@ export class RoutePath {
     public nextStopAfter(s: number): number | undefined {
         for (let i = 0; i < this.stopS.length; i++) if (this.stopS[i] > s + 1e-9) return i;
         return undefined;
+    }
+
+    /**
+     * True when closing `waypoints` into a loop (last waypoint back to the first) would be a
+     * short seam rather than a cross-country leg — the gate `onStart` uses before passing
+     * `{ closed: true }` to the constructor (final review Important 2: Loop must not silently
+     * splice a multi-hundred-metre off-road return onto a point-to-point route).
+     */
+    public static isClosable(waypoints: RouteWaypoint[], maxSeam = MAX_LOOP_SEAM): boolean {
+        if (waypoints.length < 3) return false;
+        const first = waypoints[0], last = waypoints[waypoints.length - 1];
+        return Math.hypot(last.x - first.x, last.y - first.y) <= maxSeam;
     }
 
     public tileCoords(): [number, number][] {

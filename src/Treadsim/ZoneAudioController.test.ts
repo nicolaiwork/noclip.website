@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AREA_POLL_MS, CROSSFADE_MS, isNightTime, ZoneAudioController, type AudioSink } from "./ZoneAudioController.js";
 import { fakeTables } from "./ZoneAudioTables.fake.js";
 
@@ -93,6 +93,19 @@ describe("ZoneAudioController", () => {
         c.setOptions(on);
         c.tick(4 * AREA_POLL_MS, 12, NOON);
         expect(sink.take()).toEqual([`amb 539131 v${(1 * 0.69).toFixed(2)} f2000`, `music 53492 v${(0.5 * 0.4).toFixed(2)} f0`]);
+    });
+    it("a music kit with no files stays silent (no throw, no music sink call) and warns once; a later zone still starts music", () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        const sink = new FakeSink();
+        const c = new ZoneAudioController(fakeTables(), sink, on, () => 0);
+        expect(() => c.tick(0, 1800, NOON)).not.toThrow(); // "Silent Hollow": zoneMusicId 99 → kits [9001, 9001], no files
+        const calls = sink.take();
+        expect(calls.some((s) => s.startsWith("music"))).toBe(false);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith("treadsim: sound kit has no files", 9001);
+        c.tick(AREA_POLL_MS, 12, NOON); // Elwynn afterwards: music starts normally
+        expect(sink.take()).toEqual([`amb 539131 v${(1 * 0.69).toFixed(2)} f2000`, `music 53492 v${(0.5 * 0.4).toFixed(2)} f0`]);
+        warn.mockRestore();
     });
     it("volume changes reach the sink immediately, scaled by the current kits", () => {
         const sink = new FakeSink();

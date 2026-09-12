@@ -12,6 +12,9 @@ export const SPIKE_THRESHOLD_DEG = 45;
 // A declared stop exempts a corner from the 45 deg/u gate above, not from this: above 120
 // deg/u the camera whips even at a declared corner, so every route (on-stop or not) must stay under it.
 export const SPIKE_CEILING_DEG = 120;
+// Same value as RoutePath.MAX_LOOP_SEAM (15 u) and the same reason: past this distance a gap
+// reads as unauthored road, not a seam. Not imported from there — RoutePath.ts does not import
+// this module, and importing it here would create the cycle (RouteQuality already imports RoutePath).
 export const MAX_GAP = 15;
 export const MIN_GAP = 1;
 

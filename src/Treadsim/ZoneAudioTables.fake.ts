@@ -9,10 +9,14 @@ export function fakeTables(): ZoneAudioTables {
         1537: { name: "Ironforge", parentAreaId: 0, ambienceId: 42, zoneMusicId: 0, introSoundId: 0 },
         700: { name: "Loop A", parentAreaId: 701, ambienceId: 0, zoneMusicId: 0, introSoundId: 0 },
         701: { name: "Loop B", parentAreaId: 700, ambienceId: 0, zoneMusicId: 0, introSoundId: 0 },
+        // Ironforge-like shape but via a *music* kit with no files (Ironforge's own zoneMusicId
+        // is 0 — "no music" — which is a different code path from "a kit exists but is empty").
+        1800: { name: "Silent Hollow", parentAreaId: 0, ambienceId: 0, zoneMusicId: 99, introSoundId: 0 },
     };
     const music: Record<number, ZoneMusicRow> = {
         1: { silenceMinMs: [180000, 180000], silenceMaxMs: [300000, 300000], soundKits: [2523, 2523] },
         13: { silenceMinMs: [180000, 180000], silenceMaxMs: [300000, 300000], soundKits: [2532, 2532] },
+        99: { silenceMinMs: [180000, 180000], silenceMaxMs: [300000, 300000], soundKits: [9001, 9001] },
     };
     const amb: Record<number, [number, number]> = { 35: [4183, 4184], 31: [4176, 4177], 42: [4190, 4191] };
     const files: Record<number, number[]> = { 2523: [53492, 53493, 53494], 2532: [53202, 53203], 4183: [539131], 4184: [539108], 4176: [539047], 4177: [538994], 2541: [53211] };

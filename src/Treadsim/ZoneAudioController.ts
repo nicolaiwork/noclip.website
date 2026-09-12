@@ -46,6 +46,8 @@ export class ZoneAudioController {
     private introStartedAt = new Map<number, number>();
     private lastNight: 0 | 1 = 0;
     private lastNowMs = 0;
+    /** Kit ids already warned about (Ironforge-shaped: a music kit with no files) — once per kit, not once per tick. */
+    private warnedEmptyKits = new Set<number>();
 
     constructor(private tables: ZoneAudioTables, private sink: AudioSink, private opts: ZoneAudioOptions, private random: () => number = Math.random) {
         sink.onMusicEnded = () => this.onMusicEnded();
@@ -126,7 +128,14 @@ export class ZoneAudioController {
         if (file === undefined) {
             kit = plan.music!.kits[night];
             const files = this.tables.soundKitFiles(kit);
-            if (!files.length) return;
+            if (!files.length) {
+                // Silent for this zone (Ironforge-shaped: a music kit with no files) — no
+                // nextTrackAtMs is set, so nothing retries, but a later zone change still calls
+                // startTrack fresh (updateMusic dispatches on `id !== this.musicId`), so music
+                // resumes normally once the runner leaves. Logged once per kit, not thrown.
+                if (!this.warnedEmptyKits.has(kit)) { this.warnedEmptyKits.add(kit); console.warn("treadsim: sound kit has no files", kit); }
+                return;
+            }
             let i = Math.min(files.length - 1, Math.floor(this.random() * files.length));
             if (files.length > 1 && files[i] === this.lastFile) i = (i + 1) % files.length;
             file = files[i];
